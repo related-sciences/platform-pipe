@@ -13,7 +13,7 @@ docker build --build-arg USERNAME=$USER --build-arg USERID=$(id -u) -t ot-client
 docker run --user $(id -u):$(id -g) --rm -ti \
 -v $HOME/repos/rs/ot-scoring:/home/$USER/repos/ot-scoring \
 -v /data/disk1/ot/dev:/home/$USER/data/ot \
--p 8888:8888 \
+-p 8888:8888 -p 4040:4040 \
 ot-client
 ```
 

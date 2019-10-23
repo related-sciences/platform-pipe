@@ -111,9 +111,11 @@ RUN curl -L -o sbt.deb https://dl.bintray.com/sbt/debian/sbt-1.3.3.deb && dpkg -
 # Jupyter
 RUN pip install --upgrade toree
 RUN jupyter toree install --spark_home=/usr/spark-2.4.1/
+COPY kernel.json /usr/local/share/jupyter/kernels/apache_toree_scala/kernel.json
 
 # Shell Utilities
-RUN apt-get update && apt-get -y install sudo htop vim
+RUN apt-get update && apt-get -y install htop vim
+RUN echo "N" | apt-get install sudo
 
 WORKDIR /home/$USERNAME
 RUN mkdir repos data
