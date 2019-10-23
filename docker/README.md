@@ -26,6 +26,7 @@ docker build --build-arg USERNAME=$USER --build-arg USERID=$(id -u) --build-arg 
 
 ```
 docker run --user $(id -u):$(id -g) --rm -ti \
+--network data_pipeline_default \
 -v $HOME/repos/ot/data_pipeline:/home/$USER/repos/data_pipeline \
 -v $HOME/repos/rs/ot-scoring:/home/$USER/repos/ot-scoring \
 -v /data/disk1/ot/dev:/home/$USER/data/ot \

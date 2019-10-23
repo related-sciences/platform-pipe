@@ -4,6 +4,8 @@ ARG USERID
 
 # Match client user
 RUN useradd -ms /bin/bash -u $USERID $USERNAME
+RUN usermod -aG sudo $USERNAME
+RUN echo "$USERNAME     ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
 
 # ----------------------------------------------------------------------------------------------------------------------
 # Spark Initialization
@@ -103,9 +105,15 @@ RUN conda init bash
 RUN echo "conda activate ot-client" >> ~/.bashrc
 ENV PATH /opt/conda/envs/ot-client/bin:$PATH
 
+# SBT
+RUN curl -L -o sbt.deb https://dl.bintray.com/sbt/debian/sbt-1.3.3.deb && dpkg -i sbt.deb
+
 # Jupyter
 RUN pip install --upgrade toree
 RUN jupyter toree install --spark_home=/usr/spark-2.4.1/
+
+# Shell Utilities
+RUN apt-get update && apt-get -y install sudo htop vim
 
 WORKDIR /home/$USERNAME
 RUN mkdir repos data

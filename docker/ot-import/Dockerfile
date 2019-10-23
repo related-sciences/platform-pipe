@@ -6,6 +6,8 @@ ARG USERID
 
 # Match client user
 RUN useradd -ms /bin/bash -u $USERID $USERNAME
+RUN usermod -aG sudo $USERNAME
+RUN echo "$USERNAME     ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
 
 RUN apt-get update && apt-get install -y \
     build-essential \
