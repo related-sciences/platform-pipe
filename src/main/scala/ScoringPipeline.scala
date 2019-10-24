@@ -17,6 +17,7 @@ import java.text.SimpleDateFormat
 import java.util.{Calendar, Date}
 import org.yaml.snakeyaml.Yaml
 
+
 val INPUT_DIR = Paths.get(System.getProperty("user.home"), "data", "ot", "extract")
 val OUTPUT_DIR = Paths.get(System.getProperty("user.home"), "data", "ot", "results")
 val CONFIG_DIR = Paths.get(System.getProperty("user.home"), "repos", "ot-scoring", "config")
@@ -75,8 +76,7 @@ object ScoringPipeline {
     val direct_data_sources = List("expression_atlas")
     df
       .select("id", "source_id", "disease_id", "target_id", "efo_codes", "score")
-      // TODO: Figure out exactly what "direct_do_not_propagate" sources mean -- it appears
-      // this is mainly for when similar diseases to the primary disease are likely too unrelated
+      // A "direct" source is one for which expansion to all EFO codes for a given disease is not allowed
       .withColumn("is_direct_source", $"source_id".isin(direct_data_sources:_*))
       // Create disease ids to explode as 1-item array, or as existing id array in "efo_codes"
       .withColumn(
@@ -130,6 +130,9 @@ object ScoringPipeline {
    */
   def aggregateSourceScores(df: DataFrame): DataFrame = {
     df
+      // Constituents for any one score are limited to the 100 largest
+      // (See: https://github.com/opentargets/data_pipeline/blob/e8372eac48b81a337049dd6b132dd69ff5cc7b64/mrtarget/modules/Association.py#L268)
+      .filter($"rid" <= 100)
       .groupBy("target_id", "disease_id", "source_id")
       .agg(sum("score").as("score_raw"), max("is_direct_id").as("is_direct"))
       .withColumn("score", when($"score_raw" > 1, 1).otherwise($"score_raw"))
@@ -148,6 +151,7 @@ object ScoringPipeline {
           .partitionBy("target_id", "disease_id")
           .orderBy($"score".desc)
       ))
+      .filter($"rid" <= 100)
       .withColumn("score", $"score" / pow($"rid", 2.0))
       .groupBy("target_id", "disease_id")
       .agg(
