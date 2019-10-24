@@ -3,59 +3,32 @@
  *
  * Usage: /usr/spark-2.4.1/bin/spark-shell --driver-memory 4g --executor-memory 6g --executor-cores 8 -i ScoringPipeline.scala
  */
-import scala.io.Source
-import scala.collection.JavaConversions.mapAsScalaMap
-import scala.collection.JavaConversions._
-import java.nio.file.Paths
-import java.util.{Map => JMap}
+package com.relatedsciences.opentargets.pipeline
+import com.relatedsciences.opentargets.pipeline.{Configuration => Config}
+import org.apache.spark.sql.SparkSession
 import org.apache.spark.sql.DataFrame
 import org.apache.spark.sql.functions._
 import org.apache.spark.sql.expressions.Window
-import org.slf4j.LoggerFactory
-import org.slf4j.Logger
 import java.text.SimpleDateFormat
-import java.util.{Calendar, Date}
-import org.yaml.snakeyaml.Yaml
+import java.util.Calendar
 
+class Pipeline(spark: SparkSession) {
 
-val INPUT_DIR = Paths.get(System.getProperty("user.home"), "data", "ot", "extract")
-val OUTPUT_DIR = Paths.get(System.getProperty("user.home"), "data", "ot", "results")
-val CONFIG_DIR = Paths.get(System.getProperty("user.home"), "repos", "ot-scoring", "config")
+  import spark.implicits._
 
-def using[A](r: Source)(f: Source => A): A = {try f(r) finally r.close()}
-
-object Configuration {
-
-  def loadConfig(path: String): JMap[String, Any] = {
-    val content = using(Source.fromFile(path))(f => f.mkString)
-    (new Yaml).load(content).asInstanceOf[JMap[String, Any]]
+  object Logger {
+    def info(msg: String) = {
+      val format = new SimpleDateFormat("y-M-d H:m:s")
+      val timestamp = format.format(Calendar.getInstance().getTime())
+      println(timestamp + ": " + msg)
+    }
   }
-
-  def loadScoringConfig(path: String): Map[String, Double] = {
-    mapAsScalaMap(
-      loadConfig(path)
-        .get("scoring_weights").asInstanceOf[JMap[String, Any]]
-        .get("source").asInstanceOf[JMap[String, Double]]
-    ).toMap
-  }
-
-}
-
-object logger {
-  def info(msg: String) = {
-    val format = new SimpleDateFormat("y-M-d H:m:s")
-    val timestamp = format.format(Calendar.getInstance().getTime())
-    println(timestamp + ": " + msg)
-  }
-}
-
-object ScoringPipeline {
 
   /**
    * Extract nested fields and subset raw evidence strings to tabular frame.
    */
   def getEvidenceDF(): DataFrame = {
-    spark.read.json(INPUT_DIR.resolve("evidence.json").toString())
+    spark.read.json(Config.INPUT_DIR.resolve("evidence.json").toString())
       .select(
         $"target.id".as("target_id"),
         $"private.efo_codes".as("efo_codes"),
@@ -106,7 +79,7 @@ object ScoringPipeline {
    * See: https://github.com/opentargets/data_pipeline/blob/7098546ee09ca1fc3c690a0bd6999b865ddfe646/mrtarget/common/Scoring.py#L66
    */
   def computeSourceScores(df: DataFrame): DataFrame = {
-    val config = Configuration.loadScoringConfig(CONFIG_DIR.resolve("scoring.yml").toString)
+    val config = Configuration.loadScoringConfig(Config.CONFIG_DIR.resolve("scoring.yml").toString)
     val lkp = typedLit(config)
     df
       // Compute score for source using source-specific weights times the original evidence score
@@ -161,7 +134,9 @@ object ScoringPipeline {
       )
   }
 
-  def execute() = {
+  def execute(): Unit = {
+    val logger = Logger
+
     logger.info("Beginning scoring pipeline")
 
     logger.info("Exploding evidence data and computing raw scores")
@@ -175,17 +150,14 @@ object ScoringPipeline {
     logger.info("Computing association level scores")
     val dfa = dfs.transform(aggregateAssociationScores)
 
-    var path = OUTPUT_DIR.resolve("score_source.parquet")
+    var path = Config.OUTPUT_DIR.resolve("score_source.parquet")
     dfs.write.format("parquet").mode("overwrite").save(path.toString)
     logger.info(s"Saved source-level data to $path")
 
-    path = OUTPUT_DIR.resolve("score_association.parquet")
+    path = Config.OUTPUT_DIR.resolve("score_association.parquet")
     dfa.write.format("parquet").mode("overwrite").save(path.toString)
     logger.info(s"Saved source-level data to $path")
 
     logger.info("Pipeline complete")
   }
 }
-
-ScoringPipeline.execute()
-System.exit(0)

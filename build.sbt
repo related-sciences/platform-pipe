@@ -9,3 +9,5 @@ libraryDependencies ++= Seq(
   "org.apache.spark" %% "spark-sql" % "2.4.1",
   "org.apache.spark" %% "spark-mllib" % "2.4.1"
 )
+
+libraryDependencies += "org.yaml" % "snakeyaml" % "1.21"
