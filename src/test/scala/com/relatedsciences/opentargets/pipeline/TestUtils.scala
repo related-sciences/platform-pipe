@@ -8,7 +8,9 @@ object TestUtils {
     Configuration(
       inputDir=path.getParent.resolve("input"),
       outputDir=path.getParent.resolve("output"),
-      configDir=path
+      configDir=path,
+      allowUnknownDataType = true,
+      saveEvidenceScores = true
     )
   }
 

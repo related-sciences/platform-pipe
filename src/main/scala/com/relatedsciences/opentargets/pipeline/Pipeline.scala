@@ -5,7 +5,7 @@
  */
 package com.relatedsciences.opentargets.pipeline
 import com.relatedsciences.opentargets.pipeline.{Configuration => Config}
-import com.relatedsciences.opentargets.pipeline.Scoring.FieldName
+import com.relatedsciences.opentargets.pipeline.Scoring.{FieldName, FieldPath, UnsupportedDataTypeException}
 import org.apache.spark.sql.SparkSession
 import org.apache.spark.sql.{DataFrame, Row}
 import org.apache.spark.sql.functions._
@@ -30,9 +30,10 @@ class Pipeline(spark: SparkSession, config: Configuration = Configuration.defaul
    * Extract nested fields and subset raw evidence strings to tabular frame.
    */
   def getRawEvidence(): DataFrame = {
-    val evidence_paths = FieldName.values.map(FieldName.pathName)
-    val evidence_alias = FieldName.values.map(FieldName.flatName)
-    val evidence_cols = (evidence_paths, evidence_alias).zipped.toList.sorted.map(t => col(t._1).as(t._2))
+    val valueFields = (FieldName.values.map(FieldName.pathName), FieldName.values.map(FieldName.flatName))
+    val pathFields = (FieldPath.values.map(FieldPath.pathName), FieldPath.values.map(FieldPath.flatName))
+    val valueCols = valueFields.zipped.toList.sorted.map(t => col(t._1).as(t._2))
+    val pathCols = pathFields.zipped.toList.sorted.map(t => col(t._1).isNull.as(t._2))
     spark.read.json(config.inputDir.resolve("evidence.json").toString())
       .select(
         $"target.id".as("target_id"),
@@ -41,7 +42,7 @@ class Pipeline(spark: SparkSession, config: Configuration = Configuration.defaul
         $"type".as("type_id"),
         $"sourceID".as("source_id"),
         $"id",
-        struct(evidence_cols:_*).as("resource_data")
+        struct(valueCols ++ pathCols:_*).as("resource_data")
       )
   }
 
@@ -82,9 +83,18 @@ class Pipeline(spark: SparkSession, config: Configuration = Configuration.defaul
    * See: https://github.com/opentargets/data_pipeline/blob/7098546ee09ca1fc3c690a0bd6999b865ddfe646/mrtarget/common/EvidenceString.py#L570
    */
   def computeResourceScores(df: DataFrame): DataFrame = {
+    /* WARNING: keep the config out of the UDF closure as it will cause serialization errors */
+    // TODO: Stop using path objects in the config -- that's probably why they won't serialize
+    val allowUnknownDataType = config.allowUnknownDataType
     val scoringUdf = udf {
-      (typeId: String, sourceId: String, resourceData: Row) =>
-        Scoring.score(typeId, sourceId, resourceData)
+      (typeId: String, sourceId: String, resourceData: Row) => {
+        try {
+          // TODO: Support scores that can't be computed for one reason or another
+          Scoring.score(typeId, sourceId, resourceData).get
+        } catch {
+          case _: UnsupportedDataTypeException if allowUnknownDataType => 0.0
+        }
+      }
     }
     df.withColumn("score_resource", scoringUdf($"type_id", $"source_id", $"resource_data"))
   }
@@ -167,10 +177,10 @@ class Pipeline(spark: SparkSession, config: Configuration = Configuration.defaul
   }
 
   def runPreprocessing(): Pipeline = {
-    var logger = Logger
+    val logger = Logger
     logger.info("Beginning preprocessing pipeline")
 
-    logger.info("Extract necessary fields and preparing disease ids for expansion")
+    logger.info("Extract necessary fields and prepare disease ids for expansion")
     val df = getRawEvidence().transform(prepareDiseaseIds)
 
     val path = config.outputDir.resolve("evidence.parquet")
@@ -182,7 +192,7 @@ class Pipeline(spark: SparkSession, config: Configuration = Configuration.defaul
   }
 
   def runScoring(): Pipeline = {
-    var logger = Logger
+    val logger = Logger
     logger.info("Beginning scoring pipeline")
 
     logger.info("Fetching evidence data and computing resource scores")
@@ -193,6 +203,12 @@ class Pipeline(spark: SparkSession, config: Configuration = Configuration.defaul
 
     logger.info("Computing harmonic sum factors with source specific weights")
     df = df.transform(computeSourceScores)
+
+    if (config.saveEvidenceScores){
+      val path = config.outputDir.resolve("score_evidence.parquet")
+      df.write.format("parquet").mode("overwrite").save(path.toString)
+      logger.info(s"Saved evidence-level scores to $path")
+    }
 
     logger.info("Computing source level scores")
     val dfs = df.transform(aggregateSourceScores)

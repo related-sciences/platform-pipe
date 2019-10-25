@@ -3,9 +3,14 @@ import collections
 
 def get_record_iterator():
     keys = [
+        'somatic_mutation',
+        'animal_model',
+        'rna_expression',
+        'known_drug',
         'log2_fold_change',
         'drug2clinic',
-        'target2drug'
+        'target2drug',
+        'gene2variant'
     ]
     with open('/home/eczech/data/ot/extract/evidence.json', 'r') as fd:
         for line in fd:
