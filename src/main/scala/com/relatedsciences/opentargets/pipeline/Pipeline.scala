@@ -5,17 +5,19 @@
  */
 package com.relatedsciences.opentargets.pipeline
 import com.relatedsciences.opentargets.pipeline.{Configuration => Config}
+import com.relatedsciences.opentargets.pipeline.Scoring.FieldName
 import org.apache.spark.sql.SparkSession
-import org.apache.spark.sql.DataFrame
+import org.apache.spark.sql.{DataFrame, Row}
 import org.apache.spark.sql.functions._
 import org.apache.spark.sql.expressions.Window
 import java.text.SimpleDateFormat
 import java.util.Calendar
 
-class Pipeline(spark: SparkSession) {
+class Pipeline(spark: SparkSession, config: Configuration = Configuration.default()) {
 
   import spark.implicits._
 
+  /** TODO: Fix lazy ass logging; figure out how to choose framework compatible with other classpath entries */
   object Logger {
     def info(msg: String) = {
       val format = new SimpleDateFormat("y-M-d H:m:s")
@@ -27,16 +29,64 @@ class Pipeline(spark: SparkSession) {
   /**
    * Extract nested fields and subset raw evidence strings to tabular frame.
    */
-  def getEvidenceDF(): DataFrame = {
-    spark.read.json(Config.INPUT_DIR.resolve("evidence.json").toString())
+  def getRawEvidence(): DataFrame = {
+    val evidence_paths = FieldName.values.map(FieldName.pathName)
+    val evidence_alias = FieldName.values.map(FieldName.flatName)
+    val evidence_cols = (evidence_paths, evidence_alias).zipped.toList.sorted.map(t => col(t._1).as(t._2))
+    spark.read.json(config.inputDir.resolve("evidence.json").toString())
       .select(
         $"target.id".as("target_id"),
         $"private.efo_codes".as("efo_codes"),
         $"disease.id".as("disease_id"),
-        $"scores.association_score".as("score"),
+        $"type".as("type_id"),
         $"sourceID".as("source_id"),
-        $"id"
+        $"id",
+        struct(evidence_cols:_*).as("resource_data")
       )
+  }
+
+  /**
+   * Prepare the list of disease ids (i.e. EFO codes) for expansion following individual
+   * evidence string scoring.
+   *
+   * See: https://github.com/opentargets/data_pipeline/blob/e8372eac48b81a337049dd6b132dd69ff5cc7b64/mrtarget/modules/Association.py#L321
+   */
+  def prepareDiseaseIds(df: DataFrame): DataFrame = {
+    val direct_data_sources = List("expression_atlas")
+    df
+      // Create disease ids to explode as 1-item array with terminal (i.e. lowest in EFO ontology)
+      // disease id if source not configured for attribution to other diseases that are ancestors within EFO;
+      // otherwise use efo_codes field which always contains the original disease id as well as all ancestors
+      .withColumn("is_direct_source", $"source_id".isin(direct_data_sources:_*))
+      .withColumn(
+        "efo_ids",
+        when($"is_direct_source", array($"disease_id"))
+          .otherwise($"efo_codes")
+      )
+      // Rename the original disease_id field so it is clear that it is no longer the
+      // constitutive identifier for the association
+      .withColumnRenamed("disease_id", "terminal_disease_id")
+  }
+
+  /**
+   * Load preprocessed frame
+   */
+  def getPreprocessedEvidence(): DataFrame = {
+    spark.read.parquet(config.outputDir.resolve("evidence.parquet").toString())
+  }
+
+  /**
+   * Determine scores for individual evidence strings prior to expansion by EFO code.
+   *
+   * This method computes the "scores.association_score" field added prior to all other scoring.
+   * See: https://github.com/opentargets/data_pipeline/blob/7098546ee09ca1fc3c690a0bd6999b865ddfe646/mrtarget/common/EvidenceString.py#L570
+   */
+  def computeResourceScores(df: DataFrame): DataFrame = {
+    val scoringUdf = udf {
+      (typeId: String, sourceId: String, resourceData: Row) =>
+        Scoring.score(typeId, sourceId, resourceData)
+    }
+    df.withColumn("score_resource", scoringUdf($"type_id", $"source_id", $"resource_data"))
   }
 
   /**
@@ -46,29 +96,13 @@ class Pipeline(spark: SparkSession) {
    * See: https://github.com/opentargets/data_pipeline/blob/7098546ee09ca1fc3c690a0bd6999b865ddfe646/mrtarget/modules/Association.py#L317
    */
   def explodeByDiseaseId(df: DataFrame): DataFrame = {
-    val direct_data_sources = List("expression_atlas")
     df
-      .select("id", "source_id", "disease_id", "target_id", "efo_codes", "score")
-      // A "direct" source is one for which expansion to all EFO codes for a given disease is not allowed
-      .withColumn("is_direct_source", $"source_id".isin(direct_data_sources:_*))
-      // Create disease ids to explode as 1-item array, or as existing id array in "efo_codes"
-      .withColumn(
-        "efo_ids",
-        when($"is_direct_source", array($"disease_id"))
-          .otherwise($"efo_codes")
-      )
-      // Rename the original disease_id field so it is clear that it is no longer the primary identifier
-      .withColumnRenamed("disease_id", "orig_disease_id")
+      // Explode disease ids into new rows
       .select(
-        $"id", $"source_id", $"orig_disease_id", $"target_id", $"score",
+        $"id", $"source_id", $"terminal_disease_id", $"target_id", $"score_resource",
         explode($"efo_ids").as("disease_id")
       )
-      // This flag is important for downstream filtering of evidence records based on
-      // whether or not they relate to the primary disease or just an associated one
-      .withColumn(
-        "is_direct_id",
-        $"orig_disease_id" === $"disease_id"
-      )
+      .withColumn("is_direct_id", $"terminal_disease_id" === $"disease_id")
   }
 
   /**
@@ -79,12 +113,10 @@ class Pipeline(spark: SparkSession) {
    * See: https://github.com/opentargets/data_pipeline/blob/7098546ee09ca1fc3c690a0bd6999b865ddfe646/mrtarget/common/Scoring.py#L66
    */
   def computeSourceScores(df: DataFrame): DataFrame = {
-    val config = Configuration.loadScoringConfig(Config.CONFIG_DIR.resolve("scoring.yml").toString)
-    val lkp = typedLit(config)
+    val lkp = typedLit(config.getScoringConfig())
     df
       // Compute score for source using source-specific weights times the original evidence score
-      .withColumnRenamed("score", "score_evidence")
-      .withColumn("score_source", $"score_evidence" * coalesce(lkp($"source_id"), lit(1.0)))
+      .withColumn("score_source", $"score_resource" * coalesce(lkp($"source_id"), lit(1.0)))
 
       // Create harmonic score series for summation by ranking rows and using row number as denominator
       .withColumn("rid", row_number().over(
@@ -134,15 +166,33 @@ class Pipeline(spark: SparkSession) {
       )
   }
 
-  def execute(): Unit = {
-    val logger = Logger
+  def runPreprocessing(): Pipeline = {
+    var logger = Logger
+    logger.info("Beginning preprocessing pipeline")
 
+    logger.info("Extract necessary fields and preparing disease ids for expansion")
+    val df = getRawEvidence().transform(prepareDiseaseIds)
+
+    val path = config.outputDir.resolve("evidence.parquet")
+    df.write.format("parquet").mode("overwrite").save(path.toString)
+    logger.info(s"Saved preprocessed evidence data to $path")
+
+    logger.info("Preprocessing complete")
+    this
+  }
+
+  def runScoring(): Pipeline = {
+    var logger = Logger
     logger.info("Beginning scoring pipeline")
 
-    logger.info("Exploding evidence data and computing raw scores")
-    val df = getEvidenceDF()
-      .transform(explodeByDiseaseId)
-      .transform(computeSourceScores)
+    logger.info("Fetching evidence data and computing resource scores")
+    var df = getPreprocessedEvidence().transform(computeResourceScores)
+
+    logger.info("Exploding records across disease ontology")
+    df = df.transform(explodeByDiseaseId)
+
+    logger.info("Computing harmonic sum factors with source specific weights")
+    df = df.transform(computeSourceScores)
 
     logger.info("Computing source level scores")
     val dfs = df.transform(aggregateSourceScores)
@@ -150,14 +200,15 @@ class Pipeline(spark: SparkSession) {
     logger.info("Computing association level scores")
     val dfa = dfs.transform(aggregateAssociationScores)
 
-    var path = Config.OUTPUT_DIR.resolve("score_source.parquet")
+    var path = config.outputDir.resolve("score_source.parquet")
     dfs.write.format("parquet").mode("overwrite").save(path.toString)
     logger.info(s"Saved source-level data to $path")
 
-    path = Config.OUTPUT_DIR.resolve("score_association.parquet")
+    path = config.outputDir.resolve("score_association.parquet")
     dfa.write.format("parquet").mode("overwrite").save(path.toString)
     logger.info(s"Saved source-level data to $path")
 
-    logger.info("Pipeline complete")
+    logger.info("Scoring complete")
+    this
   }
 }

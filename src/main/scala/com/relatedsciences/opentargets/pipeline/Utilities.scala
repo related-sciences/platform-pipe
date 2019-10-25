@@ -1,7 +1,7 @@
 package com.relatedsciences.opentargets.pipeline
 import scala.io.Source
 
-object Utils {
+object Utilities {
   /**
    * Resource manager wrapper
    * @param r resource to close after use

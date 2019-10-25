@@ -15,7 +15,9 @@ object Main {
       .appName("OT Scoring")
       .config("spark.master", "local[*]")
       .getOrCreate()
-    new Pipeline(spark).execute()
+    new Pipeline(spark)
+      .runPreprocessing()
+      .runScoring()
     spark.stop()
   }
 }
