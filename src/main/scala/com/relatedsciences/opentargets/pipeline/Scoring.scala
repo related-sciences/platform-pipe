@@ -4,6 +4,13 @@ import org.apache.spark.sql.Row
 
 object Scoring {
 
+  /**
+  * Compute the association score for a single evidence string
+   * @param typeId type associated with data (e.g. rna_expression, somatic_mutation, genetic_association)
+   * @param sourceId source of data for the given type (e.g. gwas_catalog, twentythreeandme, sysbio)
+   * @param data evidence data
+   * @return score in [0, 1]
+   */
   def score(typeId: String, sourceId: String, data: Row): Double = {
     Scorer.byTypeId(typeId) match {
       case Some(scorer) => scorer.score(data)
@@ -46,6 +53,13 @@ object Scoring {
     }
   }
 
+  /**
+  * Static field enum representing flat paths within evidence strings
+   *
+   * Note: These fields are used in the extraction pipeline to form a union of columns
+   * to extract from raw evidence and as such, any field necessary for a score
+   * calculation must be registered here.
+   */
   object FieldName extends Enumeration {
     val evidence$drug2clinic$resource_score$value,
     evidence$target2drug$resource_score$value, evidence$log2_fold_change$value,
@@ -59,6 +73,9 @@ object Scoring {
       value.toString.replace("$", "_")
   }
 
+  /**
+  * Scoring implementations by data type
+   */
   object Scorer extends Enumeration {
 
     protected case class Val(name: String, scorer: Scorer) extends super.Val
