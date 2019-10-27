@@ -7,6 +7,7 @@ import scala.collection.mutable
 object Scoring {
 
   class UnsupportedDataTypeException(message: String) extends Exception(message)
+  class InvalidRecordException(message: String) extends Exception(message)
 
   /**
   * Compute the association score for a single evidence string
@@ -53,12 +54,11 @@ object Scoring {
 
   class RnaExpressionScorer extends Scorer {
     override def score(data: Record): Option[Double] = {
-      val p_value = data.get[Double](FieldName.evidence$resource_score$value).get
-      val log2_fold_change =
-        data.get[Double](FieldName.evidence$log2_fold_change$value).get
-      val prank = data.get[Long](FieldName.evidence$log2_fold_change$percentile_rank).get / 100.0
-      val fold_scale_factor = Math.abs(log2_fold_change) / 10.0
-      val score = p_value * fold_scale_factor * prank
+      val pValue = Utilities.scorePValue(data.get[Double](FieldName.evidence$resource_score$value).get)
+      val log2FoldChange = data.get[Double](FieldName.evidence$log2_fold_change$value).get
+      val pRank = data.get[Long](FieldName.evidence$log2_fold_change$percentile_rank).get / 100.0
+      val foldScaleFactor = Math.abs(log2FoldChange) / 10.0
+      val score = pValue * foldScaleFactor * pRank
       Some(Math.min(score, 1.0))
     }
   }
@@ -78,6 +78,10 @@ object Scoring {
       if (mutation.isNullAt(mutation.fieldIndex("number_samples_with_mutation_type"))){
         return None
       }
+      if (!mutation.schema.fieldNames.contains("number_mutated_samples")){
+        throw new InvalidRecordException(
+          "Record for somatic_mutation source is missing required field 'number_mutated_samples'")
+      }
       Some((mutation.getAs[Long]("number_samples_with_mutation_type"),
         mutation.getAs[Long]("number_mutated_samples")))
     }
@@ -92,6 +96,7 @@ object Scoring {
           sampleTotalCoverage += t._1
           maxSampleSize = Math.max(maxSampleSize, t._2)
         }
+        sampleTotalCoverage = Math.min(sampleTotalCoverage, maxSampleSize)
         frequency = Utilities.normalize(sampleTotalCoverage / maxSampleSize, (0.0, 9.0), (0.5, 1.0))
       }
       Some(data.get[Double](FieldName.evidence$resource_score$value).get * frequency)

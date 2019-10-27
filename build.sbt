@@ -1,4 +1,5 @@
 name := "ot-scoring"
+organization := "com.relatedsciences"
 
 version := "0.1"
 
@@ -14,3 +15,7 @@ libraryDependencies += "org.yaml" % "snakeyaml" % "1.21"
 
 libraryDependencies += "org.scalactic" %% "scalactic" % "3.0.8"
 libraryDependencies += "org.scalatest" %% "scalatest" % "3.0.8" % "test"
+
+libraryDependencies += "org.scalactic" %% "scalactic" % "3.0.8"
+
+testOptions in Test += Tests.Argument("-oF")
