@@ -21,3 +21,13 @@ println(evidence_paths)
 println(evidence_alias)
 println(evidence_cols(0))
 
+
+val x = "x"
+var y = "x"
+val t = x match {
+  case "probability" => 1
+  case y => 2
+  case _ => -1
+}
+println(t)
+

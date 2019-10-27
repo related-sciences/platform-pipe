@@ -20,7 +20,7 @@ class Pipeline(spark: SparkSession, config: Configuration = Configuration.defaul
   /** TODO: Fix lazy ass logging; figure out how to choose framework compatible with other classpath entries */
   object Logger {
     def info(msg: String) = {
-      val format = new SimpleDateFormat("y-M-d H:m:s")
+      val format = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss")
       val timestamp = format.format(Calendar.getInstance().getTime())
       println(timestamp + ": " + msg)
     }

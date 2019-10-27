@@ -47,9 +47,9 @@ class UtilitiesSuite extends FunSuite {
     assertEqual(1)(Utilities.scorePValue(1e-10))
     assertEqual(1)(Utilities.scorePValue(1e-30))
     assertEqual(.5)(Utilities.scorePValue(1e-5))
-    assertEqual(0)(Utilities.scorePValue(1e-2, curRng = (1e-10, 1e-2)))
-    assertEqual(1)(Utilities.scorePValue(1e-10, curRng = (1e-10, 1e-2)))
-    assertEqual(0)(Utilities.scorePValue(1, curRng = (1e-10, 1e-2)))
-    assertEqual(.75)(Utilities.scorePValue(1e-5, curRng = (1e-6, 1e-2)))
+    assertEqual(0)(Utilities.scorePValue(1e-2, rng = (1e-10, 1e-2)))
+    assertEqual(1)(Utilities.scorePValue(1e-10, rng = (1e-10, 1e-2)))
+    assertEqual(0)(Utilities.scorePValue(1, rng = (1e-10, 1e-2)))
+    assertEqual(.75)(Utilities.scorePValue(1e-5, rng = (1e-6, 1e-2)))
   }
 }

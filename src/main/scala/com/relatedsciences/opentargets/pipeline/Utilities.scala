@@ -37,12 +37,12 @@ object Utilities {
     clip(r, newRng)
   }
 
-  def scorePValue(pValue: Double, curRng: (Double, Double) = (1e-10, 1.0), newRng: (Double, Double) = (0.0, 1.0)): Double = {
+  def scorePValue(pValue: Double, rng: (Double, Double) = (1e-10, 1.0)): Double = {
     val pValueLog = Math.log10(pValue)
-    val curRngLog = (Math.log10(curRng._1), Math.log10(curRng._2))
+    val rngLog = (Math.log10(rng._1), Math.log10(rng._2))
     // Normalize log p value into 0-1 range and flip interpretation since higher p-values are
     // supposed to have lower scores (i.e. scorePValue(.0001) > scorePValue(.1))
-    val pLinear = normalize(pValueLog, curRngLog, newRng)
+    val pLinear = normalize(pValueLog, rngLog, (0.0, 1.0))
     assert(pLinear >= 0 && pLinear <= 1)
     1.0 - pLinear
   }

@@ -1,3 +1,5 @@
+import com.relatedsciences.opentargets.pipeline.Scoring.Scorer
+
 abstract class Processor {
   def run(row: String): String
 }
@@ -32,3 +34,5 @@ class Record(row: String) {
 println(Planet.Mercury.processor.run("test"))
 println(Planet.withNameWithDefault("mercury").get.processor.run("Test"))
 println(new Record("blaah").get(Planet.Mercury))
+
+case class Val[T](name: T, scorer: Scorer)
