@@ -7,12 +7,14 @@ import org.yaml.snakeyaml.Yaml
 import scala.collection.JavaConversions.mapAsScalaMap
 import scala.io.Source
 
-case class Configuration(inputDir: Path,
-                         outputDir: Path,
-                         configDir: Path,
-                         allowUnknownDataType: Boolean = true,
-                         allowMissingScore: Boolean = false,
-                         saveEvidenceScores: Boolean = false) {
+case class Configuration(
+    inputDir: Path,
+    outputDir: Path,
+    configDir: Path,
+    allowUnknownDataType: Boolean = true,
+    allowMissingScore: Boolean = false,
+    saveEvidenceScores: Boolean = false
+) {
 
   private def loadConfig(path: String): JMap[String, Any] = {
     val content = Utilities.using(Source.fromFile(path))(f => f.mkString)
@@ -37,10 +39,8 @@ object Configuration {
 
   def default(): Configuration = {
     Configuration(
-      inputDir =
-        Paths.get(System.getProperty("user.home"), "data", "ot", "extract"),
-      outputDir =
-        Paths.get(System.getProperty("user.home"), "data", "ot", "results"),
+      inputDir = Paths.get(System.getProperty("user.home"), "data", "ot", "extract"),
+      outputDir = Paths.get(System.getProperty("user.home"), "data", "ot", "results"),
       configDir = Paths
         .get(System.getProperty("user.home"), "repos", "ot-scoring", "config")
     )

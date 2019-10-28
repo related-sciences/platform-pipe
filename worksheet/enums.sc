@@ -18,7 +18,7 @@ object Planet extends Enumeration {
       "in merc"
     }
   })
-  val Venus   = Val("venus", new Processor {
+  val Venus = Val("venus", new Processor {
     override def run(row: String): String = {
       "in venus"
     }

@@ -1,4 +1,3 @@
-
 val fn = (x: Int) => {
   try {
     if (x > 3) throw new RuntimeException

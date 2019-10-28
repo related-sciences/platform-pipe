@@ -1,17 +1,15 @@
 package com.relatedsciences.opentargets.pipeline
 
+import com.relatedsciences.opentargets.pipeline.schema.{DataSource, DataType}
 import com.relatedsciences.opentargets.pipeline.schema.Fields.{FieldName, FieldPath}
 import org.apache.spark.sql.Row
-import schema.DataType
-import schema.DataSource
 
 object Scoring {
 
-  class UnsupportedDataTypeException(message: String) extends Exception(message)
-  class UnsupportedResourceScoreTypeException(message: String)
-      extends Exception(message)
+  class UnsupportedDataTypeException(message: String)          extends Exception(message)
+  class UnsupportedResourceScoreTypeException(message: String) extends Exception(message)
   class InvalidRecordException(message: String) extends Exception(message) {
-    def this(message: String, cause: Throwable){
+    def this(message: String, cause: Throwable) {
       this(message)
       initCause(cause)
     }
@@ -29,14 +27,16 @@ object Scoring {
   def score(id: String, typeId: String, sourceId: String, data: Row): Option[Double] = {
     val record: Record = new Record(id, typeId, sourceId, data)
     Scorer.byTypeId(typeId) match {
-      case Some(scorer) => try {
-        scorer.score(record)
-      } catch {
-        case e: Exception => throw new InvalidRecordException(s"Failed record: $record", e)
-      }
+      case Some(scorer) =>
+        try {
+          scorer.score(record)
+        } catch {
+          case e: Exception => throw new InvalidRecordException(s"Failed record: $record", e)
+        }
       case None =>
         throw new UnsupportedDataTypeException(
-          s"Failed to find scoring implementation for data type '$typeId'")
+          s"Failed to find scoring implementation for data type '$typeId'"
+        )
     }
   }
 
@@ -56,22 +56,21 @@ object Scoring {
 
   class AnimalModelScorer extends Scorer {
     override def score(data: Record): Option[Double] = {
-      data.get[Double](
-        FieldName.evidence$disease_model_association$resource_score$value)
+      data.get[Double](FieldName.evidence$disease_model_association$resource_score$value)
     }
   }
 
   class RnaExpressionScorer extends Scorer {
     override def score(data: Record): Option[Double] = {
-      val pValue = Utilities.scorePValue(
-        data.get[Double](FieldName.evidence$resource_score$value).get)
+      val pValue =
+        Utilities.scorePValue(data.get[Double](FieldName.evidence$resource_score$value).get)
       val log2FoldChange =
         data.get[Double](FieldName.evidence$log2_fold_change$value).get
       val pRank = data
         .get[Long](FieldName.evidence$log2_fold_change$percentile_rank)
         .get / 100.0
       val foldScaleFactor = Math.abs(log2FoldChange) / 10.0
-      val score = pValue * foldScaleFactor * pRank
+      val score           = pValue * foldScaleFactor * pRank
       Some(Math.min(score, 1.0))
     }
   }
@@ -105,21 +104,23 @@ object Scoring {
   class SomaticMutationScorer extends Scorer {
 
     def processMutation(mutation: Row): Option[(Long, Long)] = {
-      if (!mutation.schema.fieldNames.contains(
-            "number_samples_with_mutation_type")) {
+      if (!mutation.schema.fieldNames.contains("number_samples_with_mutation_type")) {
         return None
       }
-      if (mutation.isNullAt(
-            mutation.fieldIndex("number_samples_with_mutation_type"))) {
+      if (mutation.isNullAt(mutation.fieldIndex("number_samples_with_mutation_type"))) {
         return None
       }
       if (!mutation.schema.fieldNames.contains("number_mutated_samples")) {
         throw new InvalidRecordException(
-          "Record for somatic_mutation source is missing required field 'number_mutated_samples'")
+          "Record for somatic_mutation source is missing required field 'number_mutated_samples'"
+        )
       }
       Some(
-        (mutation.getAs[Long]("number_samples_with_mutation_type"),
-         mutation.getAs[Long]("number_mutated_samples")))
+        (
+          mutation.getAs[Long]("number_samples_with_mutation_type"),
+          mutation.getAs[Long]("number_mutated_samples")
+        )
+      )
     }
 
     override def score(data: Record): Option[Double] = {
@@ -127,20 +128,19 @@ object Scoring {
       val mutations = data.get[Seq[Row]](FieldName.evidence$known_mutations)
       if (mutations.isDefined && mutations.get.nonEmpty) {
         var sampleTotalCoverage = 1.0
-        var maxSampleSize = 1.0
+        var maxSampleSize       = 1.0
         for (t <- mutations.get.flatMap(processMutation)) {
           sampleTotalCoverage += t._1
           maxSampleSize = Math.max(maxSampleSize, t._2)
         }
         sampleTotalCoverage = Math.min(sampleTotalCoverage, maxSampleSize)
-        frequency = Utilities.normalize(sampleTotalCoverage / maxSampleSize,
-                                        (0.0, 9.0),
-                                        (0.5, 1.0))
+        frequency = Utilities.normalize(sampleTotalCoverage / maxSampleSize, (0.0, 9.0), (0.5, 1.0))
       }
       Some(
         data
           .get[Double](FieldName.evidence$resource_score$value)
-          .get * frequency)
+          .get * frequency
+      )
     }
   }
 
@@ -148,7 +148,7 @@ object Scoring {
 
     case class PhewasParams(maxCases: Int, rangeMin: Double, rangeMax: Double)
     val PhewasSources: Map[String, PhewasParams] = Map(
-      DataSource.phewas_catalog.toString -> PhewasParams(8800, 1e-25, .05),
+      DataSource.phewas_catalog.toString   -> PhewasParams(8800, 1e-25, .05),
       DataSource.twentythreeandme.toString -> PhewasParams(297901, 1e-30, .05)
     )
 
@@ -161,7 +161,8 @@ object Scoring {
         case "pvalue"      => Some(Utilities.scorePValue(score))
         case _ =>
           throw new UnsupportedResourceScoreTypeException(
-            s"Resource score type '$resourceScoreType' not valid")
+            s"Resource score type '$resourceScoreType' not valid"
+          )
       }
     }
 
@@ -210,7 +211,8 @@ object Scoring {
         case "pvalue"      => Utilities.scorePValue(v2dScore)
         case _ =>
           throw new UnsupportedResourceScoreTypeException(
-            s"Resource score type '$resourceScoreType' not valid")
+            s"Resource score type '$resourceScoreType' not valid"
+          )
       }
       Some(g2vScore * v2dScore)
     }
@@ -241,9 +243,9 @@ object Scoring {
       Scorer.values.find(_.name.toString == id).map(_.scorer)
     }
 
-    val KnownDrug = Val(DataType.known_drug, new KnownDrugScorer)
+    val KnownDrug     = Val(DataType.known_drug, new KnownDrugScorer)
     val RnaExpression = Val(DataType.rna_expression, new RnaExpressionScorer)
-    val AnimalModel = Val(DataType.animal_model, new AnimalModelScorer)
+    val AnimalModel   = Val(DataType.animal_model, new AnimalModelScorer)
     val SomaticMutation =
       Val(DataType.somatic_mutation, new SomaticMutationScorer)
     val Literature = Val(DataType.literature, new LiteratureScorer)

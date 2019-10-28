@@ -6,12 +6,12 @@ class UtilitiesSuite extends FunSuite {
 
   implicit val doubleEquality: Equality[Double] = TolerantNumerics.tolerantDoubleEquality(1e-16)
 
-  def assertEqual(expected: Double)(actual: Double): Unit ={
+  def assertEqual(expected: Double)(actual: Double): Unit = {
     assert(expected === actual)
   }
 
   test("normalization works for valid cases") {
-    assertEqual(.5 )(Utilities.normalize(1.5, (1, 2), (0, 1)))
+    assertEqual(.5)(Utilities.normalize(1.5, (1, 2), (0, 1)))
     assertEqual(1.75)(Utilities.normalize(.75, (0, 1), (1, 2)))
     assertEqual(1)(Utilities.normalize(0, (0, 1), (1, 2)))
     assertEqual(2)(Utilities.normalize(1, (0, 1), (1, 2)))

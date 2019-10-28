@@ -9,7 +9,6 @@ trait SparkSessionSetup {
       .getOrCreate()
     try {
       testMethod(spark)
-    }
-    finally spark.stop()
+    } finally spark.stop()
   }
 }

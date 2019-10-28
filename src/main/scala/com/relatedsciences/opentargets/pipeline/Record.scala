@@ -1,6 +1,5 @@
 package com.relatedsciences.opentargets.pipeline
 
-
 import com.relatedsciences.opentargets.pipeline.schema.Fields.{FieldName, FieldPath}
 import org.apache.spark.sql.Row
 
@@ -14,6 +13,10 @@ class Record(val id: String, val typeId: String, val sourceId: String, val row: 
   }
   override def toString: String = {
     "{id: %s, typeId: %s, sourceId: %s, data: %s}".format(
-      this.id, this.typeId, this.sourceId, this.row.getValuesMap(this.row.schema.fieldNames))
+      this.id,
+      this.typeId,
+      this.sourceId,
+      this.row.getValuesMap(this.row.schema.fieldNames)
+    )
   }
 }
