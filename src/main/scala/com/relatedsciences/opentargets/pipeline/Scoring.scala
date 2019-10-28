@@ -1,5 +1,6 @@
 package com.relatedsciences.opentargets.pipeline
 
+import com.relatedsciences.opentargets.pipeline.schema.Fields.{FieldName, FieldPath}
 import org.apache.spark.sql.Row
 import schema.DataType
 import schema.DataSource
@@ -9,32 +10,33 @@ object Scoring {
   class UnsupportedDataTypeException(message: String) extends Exception(message)
   class UnsupportedResourceScoreTypeException(message: String)
       extends Exception(message)
-  class InvalidRecordException(message: String) extends Exception(message)
+  class InvalidRecordException(message: String) extends Exception(message) {
+    def this(message: String, cause: Throwable){
+      this(message)
+      initCause(cause)
+    }
+  }
 
   /**
     * Compute the association score for a single evidence string
     *
+    * @param id identifier for evidence string
     * @param typeId type associated with data (e.g. rna_expression, somatic_mutation, genetic_association)
     * @param sourceId source of data for the given type (e.g. gwas_catalog, twentythreeandme, sysbio)
     * @param data evidence data
     * @return score in [0, 1] unless insufficient data was present for computation
     */
-  def score(typeId: String, sourceId: String, data: Row): Option[Double] = {
+  def score(id: String, typeId: String, sourceId: String, data: Row): Option[Double] = {
+    val record: Record = new Record(id, typeId, sourceId, data)
     Scorer.byTypeId(typeId) match {
-      case Some(scorer) => scorer.score(new Record(typeId, sourceId, data))
+      case Some(scorer) => try {
+        scorer.score(record)
+      } catch {
+        case e: Exception => throw new InvalidRecordException(s"Failed record: $record", e)
+      }
       case None =>
         throw new UnsupportedDataTypeException(
           s"Failed to find scoring implementation for data type '$typeId'")
-    }
-  }
-
-  class Record(val typeId: String, val sourceId: String, val row: Row) {
-    def get[T](field: FieldName.Value): Option[T] = {
-      val f = FieldName.flatName(field)
-      if (row.isNullAt(row.fieldIndex(f))) None else Some(row.getAs[T](f))
-    }
-    def exists(field: FieldPath.Value): Boolean = {
-      row.getAs(FieldPath.flatName(field))
     }
   }
 
@@ -225,49 +227,6 @@ object Scoring {
   }
 
   /**
-    * Static field enum representing flat paths to values within evidence strings
-    *
-    * Note: These fields are used in the extraction pipeline to form a union of columns
-    * to extract from raw evidence and as such, any field necessary for a score
-    * calculation must be registered here.
-    */
-  object FieldName extends Enumeration {
-    val evidence$drug2clinic$resource_score$value,
-    evidence$target2drug$resource_score$value, evidence$log2_fold_change$value,
-    evidence$log2_fold_change$percentile_rank, evidence$resource_score$value,
-    evidence$resource_score$type, unique_association_fields$cases,
-    evidence$variant2disease$resource_score$type,
-    evidence$gene2variant$resource_score$value,
-    evidence$variant2disease$gwas_sample_size,
-    evidence$disease_model_association$resource_score$value,
-    evidence$known_mutations, evidence$variant2disease$resource_score$value =
-      Value
-
-    def pathName(value: Value): String =
-      value.toString.replace("$", ".")
-
-    def flatName(value: Value): String =
-      value.toString.replace("$", "_")
-  }
-
-  /**
-    * Static field enum representing flat paths for which existence of information at that path must be inferred
-    *
-    * Note: These fields are used in the extraction pipeline to form a union of columns
-    * to extract from raw evidence and as such, any field necessary for a score
-    * calculation must be registered here.
-    */
-  object FieldPath extends Enumeration {
-    val evidence$gene2variant, evidence$known_mutations = Value
-
-    def pathName(value: Value): String =
-      value.toString.replace("$", ".")
-
-    def flatName(value: Value): String =
-      value.toString.replace("$", "_") + "_exists"
-  }
-
-  /**
     * Scoring implementations by data type
     */
   object Scorer extends Enumeration {
@@ -287,11 +246,11 @@ object Scoring {
     val AnimalModel = Val(DataType.animal_model, new AnimalModelScorer)
     val SomaticMutation =
       Val(DataType.somatic_mutation, new SomaticMutationScorer)
-    val Literature = Val(DataType.literature, new SomaticMutationScorer)
+    val Literature = Val(DataType.literature, new LiteratureScorer)
     val GeneticAssociation =
       Val(DataType.genetic_association, new GeneticAssociationScorer)
     val AffectedPathwayScorer =
-      Val(DataType.affected_pathway, new GeneticAssociationScorer)
+      Val(DataType.affected_pathway, new AffectedPathwayScorer)
   }
 
 }

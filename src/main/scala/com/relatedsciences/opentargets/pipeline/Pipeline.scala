@@ -4,8 +4,7 @@
  * Usage: /usr/spark-2.4.1/bin/spark-shell --driver-memory 4g --executor-memory 6g --executor-cores 8 -i ScoringPipeline.scala
  */
 package com.relatedsciences.opentargets.pipeline
-import com.relatedsciences.opentargets.pipeline.{Configuration => Config}
-import com.relatedsciences.opentargets.pipeline.Scoring.{FieldName, FieldPath, UnsupportedDataTypeException}
+import com.relatedsciences.opentargets.pipeline.Scoring.UnsupportedDataTypeException
 import org.apache.spark.sql.SparkSession
 import org.apache.spark.sql.{DataFrame, Row}
 import org.apache.spark.sql.functions._
@@ -13,15 +12,17 @@ import org.apache.spark.sql.expressions.Window
 import java.text.SimpleDateFormat
 import java.util.Calendar
 
+import com.relatedsciences.opentargets.pipeline.schema.Fields.{FieldPath, FieldName}
+
 class Pipeline(spark: SparkSession, config: Configuration = Configuration.default()) {
 
   import spark.implicits._
 
   /** TODO: Fix lazy ass logging; figure out how to choose framework compatible with other classpath entries */
   object Logger {
-    def info(msg: String) = {
+    def info(msg: String): Unit = {
       val format = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss")
-      val timestamp = format.format(Calendar.getInstance().getTime())
+      val timestamp = format.format(Calendar.getInstance().getTime)
       println(timestamp + ": " + msg)
     }
   }
@@ -29,12 +30,12 @@ class Pipeline(spark: SparkSession, config: Configuration = Configuration.defaul
   /**
    * Extract nested fields and subset raw evidence strings to tabular frame.
    */
-  def getRawEvidence(): DataFrame = {
+  def getRawEvidence: DataFrame = {
     val valueFields = (FieldName.values.map(FieldName.pathName), FieldName.values.map(FieldName.flatName))
     val pathFields = (FieldPath.values.map(FieldPath.pathName), FieldPath.values.map(FieldPath.flatName))
     val valueCols = valueFields.zipped.toList.sorted.map(t => col(t._1).as(t._2))
-    val pathCols = pathFields.zipped.toList.sorted.map(t => col(t._1).isNull.as(t._2))
-    spark.read.json(config.inputDir.resolve("evidence.json").toString())
+    val pathCols = pathFields.zipped.toList.sorted.map(t => col(t._1).isNotNull.as(t._2))
+    spark.read.json(config.inputDir.resolve("evidence.json").toString)
       .select(
         $"target.id".as("target_id"),
         $"private.efo_codes".as("efo_codes"),
@@ -72,8 +73,8 @@ class Pipeline(spark: SparkSession, config: Configuration = Configuration.defaul
   /**
    * Load preprocessed frame
    */
-  def getPreprocessedEvidence(): DataFrame = {
-    spark.read.parquet(config.outputDir.resolve("evidence.parquet").toString())
+  def getPreprocessedEvidence: DataFrame = {
+    spark.read.parquet(config.outputDir.resolve("evidence.parquet").toString)
   }
 
   /**
@@ -87,16 +88,17 @@ class Pipeline(spark: SparkSession, config: Configuration = Configuration.defaul
     // TODO: Stop using path objects in the config -- that's probably why they won't serialize
     val allowUnknownDataType = config.allowUnknownDataType
     val scoringUdf = udf {
-      (typeId: String, sourceId: String, resourceData: Row) => {
+      (id: String, typeId: String, sourceId: String, resourceData: Row) => {
         try {
           // TODO: Support scores that can't be computed for one reason or another
-          Scoring.score(typeId, sourceId, resourceData).get
+          Scoring.score(id, typeId, sourceId, resourceData).get
         } catch {
           case _: UnsupportedDataTypeException if allowUnknownDataType => 0.0
+          case e: Throwable => throw e
         }
       }
     }
-    df.withColumn("score_resource", scoringUdf($"type_id", $"source_id", $"resource_data"))
+    df.withColumn("score_resource", scoringUdf($"id", $"type_id", $"source_id", $"resource_data"))
   }
 
   /**
@@ -181,7 +183,7 @@ class Pipeline(spark: SparkSession, config: Configuration = Configuration.defaul
     logger.info("Beginning preprocessing pipeline")
 
     logger.info("Extract necessary fields and prepare disease ids for expansion")
-    val df = getRawEvidence().transform(prepareDiseaseIds)
+    val df = getRawEvidence.transform(prepareDiseaseIds)
 
     val path = config.outputDir.resolve("evidence.parquet")
     df.write.format("parquet").mode("overwrite").save(path.toString)
@@ -196,7 +198,7 @@ class Pipeline(spark: SparkSession, config: Configuration = Configuration.defaul
     logger.info("Beginning scoring pipeline")
 
     logger.info("Fetching evidence data and computing resource scores")
-    var df = getPreprocessedEvidence().transform(computeResourceScores)
+    var df = getPreprocessedEvidence.transform(computeResourceScores)
 
     logger.info("Exploding records across disease ontology")
     df = df.transform(explodeByDiseaseId)
