@@ -1,5 +1,12 @@
 /**
   * OpenTargets scoring pipeline based on https://github.com/opentargets/data_pipeline
+  *
+  * Usage (Interactive):
+  * ```
+  * /usr/spark-2.4.1/bin/spark-shell --driver-memory 12g --jars target/scala-2.11/ot-scoring_2.11-0.1.jar
+  * > import com.relatedsciences.opentargets.pipeline.Pipeline
+  * > new Pipeline(spark).runScoring(targets=Some(Seq("ENSG00000162434")), diseases=Some(Seq("EFO_0000181")))
+  * ```
   */
 package com.relatedsciences.opentargets.pipeline
 import java.text.SimpleDateFormat
