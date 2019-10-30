@@ -1,7 +1,9 @@
-package com.relatedsciences.opentargets.pipeline
+package com.relatedsciences.opentargets.pipeline.scoring
 
-import com.relatedsciences.opentargets.pipeline.schema.{DataSource, DataType}
 import com.relatedsciences.opentargets.pipeline.schema.Fields.{FieldName, FieldPath}
+import com.relatedsciences.opentargets.pipeline.schema.{DataSource, DataType}
+import com.relatedsciences.opentargets.pipeline.scoring.Component.ComponentName
+import com.relatedsciences.opentargets.pipeline.{Record, Utilities}
 import org.apache.spark.sql.Row
 
 object Scoring {
@@ -16,52 +18,58 @@ object Scoring {
   }
 
   /**
-    * Compute the association score for a single evidence string
-    *
-    * @param id identifier for evidence string
-    * @param typeId type associated with data (e.g. rna_expression, somatic_mutation, genetic_association)
-    * @param sourceId source of data for the given type (e.g. gwas_catalog, twentythreeandme, sysbio)
-    * @param data evidence data
-    * @return score in [0, 1] unless insufficient data was present for computation
-    */
-  def score(id: String, typeId: String, sourceId: String, data: Row): Option[Double] = {
-    val record: Record = new Record(id, typeId, sourceId, data)
-    Scorer.byTypeId(typeId) match {
+  * Compute the association score for a single evidence string record
+   *
+   * @param data record object containing evidence data as well as provenance (data source, type, etc.)
+   * @param params parameters to be used in scoring (e.g. field weights)
+   * @return Option[Score]
+   */
+  def score(data: Record, params: Parameters): Option[Score] = {
+    Scorer.byTypeId(data.typeId) match {
       case Some(scorer) =>
         try {
-          scorer.score(record)
+          scorer.score(data, params)
         } catch {
-          case e: Exception => throw new InvalidRecordException(s"Failed record: $record", e)
+          case e: Exception => throw new InvalidRecordException(s"Failed record: $data", e)
         }
       case None =>
         throw new UnsupportedDataTypeException(
-          s"Failed to find scoring implementation for data type '$typeId'"
+          s"Failed to find scoring implementation for data type '${data.typeId}'"
         )
     }
   }
 
+
+
   abstract class Scorer {
-    def score(data: Record): Option[Double]
+    def score(data: Record, params: Parameters): Option[Score]
   }
 
   class KnownDrugScorer extends Scorer {
-    override def score(data: Record): Option[Double] = {
-      val v = data
-        .get[Double](FieldName.evidence$drug2clinic$resource_score$value)
-        .get *
-        data.get[Long](FieldName.evidence$target2drug$resource_score$value).get
-      Some(v)
+    override def score(data: Record, params: Parameters): Option[Score] = {
+      Score
+        .using(params.weights)
+        .add(ComponentName.drug2clinic,
+             data.get[Double](FieldName.evidence$drug2clinic$resource_score$value).get)
+        .add(ComponentName.target2drug,
+             data.get[Long](FieldName.evidence$target2drug$resource_score$value).get)
+        .calculate()
     }
   }
 
   class AnimalModelScorer extends Scorer {
-    override def score(data: Record): Option[Double] = {
-      data.get[Double](FieldName.evidence$disease_model_association$resource_score$value)
+    override def score(data: Record, params: Parameters): Option[Score] = {
+      Score
+        .using(params.weights)
+        .add(
+          ComponentName.disease_model_association,
+          data.get[Double](FieldName.evidence$disease_model_association$resource_score$value).get)
+        .calculate()
     }
   }
 
   class RnaExpressionScorer extends Scorer {
-    override def score(data: Record): Option[Double] = {
+    override def score(data: Record, params: Parameters): Option[Score] = {
       val pValue =
         Utilities.scorePValue(data.get[Double](FieldName.evidence$resource_score$value).get)
       val log2FoldChange =
@@ -70,34 +78,42 @@ object Scoring {
         .get[Long](FieldName.evidence$log2_fold_change$percentile_rank)
         .get / 100.0
       val foldScaleFactor = Math.abs(log2FoldChange) / 10.0
-      val score           = pValue * foldScaleFactor * pRank
-      Some(Math.min(score, 1.0))
+      Score
+        .using(params.weights)
+        .add(ComponentName.p_value, pValue)
+        .add(ComponentName.log2_fold_scale_factor, foldScaleFactor)
+        .add(ComponentName.log2_fold_change_rank, pRank)
+        .calculate(Math.min(_, 1.0))
     }
   }
 
   class AffectedPathwayScorer extends Scorer {
-    override def score(data: Record): Option[Double] = {
-      val score = data.get[Double](FieldName.evidence$resource_score$value).get
+    override def score(data: Record, params: Parameters): Option[Score] = {
+      var score = data.get[Double](FieldName.evidence$resource_score$value).get
       val dataTypeId =
         data.get[String](FieldName.evidence$resource_score$type).get
-      dataTypeId match {
+      if (dataTypeId == "pvalue"){
         // Convert 0-1 p value score to .5 to 1 scale
         // See: https://github.com/opentargets/data_pipeline/blob/d82f4cfc1e92ab58f1ab5b5553a03742e808d9df/mrtarget/common/EvidenceString.py#L660
-        case "pvalue" =>
-          Some(.5 * Utilities.scorePValue(score, rng = (1e-14, 1e-4)) + .5)
-        case _ => Some(score)
+        score = .5 * Utilities.scorePValue(score, rng = (1e-14, 1e-4)) + .5
       }
+      Score
+        .using(params.weights)
+        .add(ComponentName.resource_score, score)
+        .calculate()
     }
   }
 
   class LiteratureScorer extends Scorer {
-    override def score(data: Record): Option[Double] = {
-      val score = data.get[Double](FieldName.evidence$resource_score$value).get
-      data.sourceId match {
-        case s if s == DataSource.europepmc.toString =>
-          Some(Math.min(score / 100.0, 1.0))
-        case _ => Some(score)
+    override def score(data: Record, params: Parameters): Option[Score] = {
+      var score = data.get[Double](FieldName.evidence$resource_score$value).get
+      if (data.sourceId == DataSource.europepmc.toString){
+        score = Math.min(score / 100.0, 1.0)
       }
+      Score
+        .using(params.weights)
+        .add(ComponentName.resource_score, score)
+        .calculate()
     }
   }
 
@@ -123,7 +139,7 @@ object Scoring {
       )
     }
 
-    override def score(data: Record): Option[Double] = {
+    override def score(data: Record, params: Parameters): Option[Score] = {
       var frequency = 1.0
       val mutations = data.get[Seq[Row]](FieldName.evidence$known_mutations)
       if (mutations.isDefined && mutations.get.nonEmpty) {
@@ -136,11 +152,12 @@ object Scoring {
         sampleTotalCoverage = Math.min(sampleTotalCoverage, maxSampleSize)
         frequency = Utilities.normalize(sampleTotalCoverage / maxSampleSize, (0.0, 9.0), (0.5, 1.0))
       }
-      Some(
-        data
-          .get[Double](FieldName.evidence$resource_score$value)
-          .get * frequency
-      )
+      val score = data.get[Double](FieldName.evidence$resource_score$value).get
+      Score
+        .using(params.weights)
+        .add(ComponentName.resource_score, score)
+        .add(ComponentName.mutation_frequency, frequency)
+        .calculate()
     }
   }
 
@@ -152,34 +169,42 @@ object Scoring {
       DataSource.twentythreeandme.toString -> PhewasParams(297901, 1e-30, .05)
     )
 
-    def scoreNoG2V(data: Record): Option[Double] = {
-      val score = data.get[Double](FieldName.evidence$resource_score$value).get
+    def scoreNoG2V(data: Record, params: Parameters): Option[Score] = {
+      var score = data.get[Double](FieldName.evidence$resource_score$value).get
       val resourceScoreType =
         data.get[String](FieldName.evidence$resource_score$type).get
-      resourceScoreType match {
-        case "probability" => Some(score)
-        case "pvalue"      => Some(Utilities.scorePValue(score))
+      score = resourceScoreType match {
+        case "probability" => score
+        case "pvalue"      => Utilities.scorePValue(score)
         case _ =>
           throw new UnsupportedResourceScoreTypeException(
             s"Resource score type '$resourceScoreType' not valid"
           )
       }
+      Score
+        .using(params.weights)
+        .add(ComponentName.resource_score, score)
+        .calculate()
     }
 
-    def scorePhewas(data: Record): Option[Double] = {
+    def scorePhewas(data: Record, params: Parameters): Option[Score] = {
       val pValue = data
         .get[Double](FieldName.evidence$variant2disease$resource_score$value)
         .get
       val nCases =
         data.get[String](FieldName.unique_association_fields$cases).get.toInt
-      val params = PhewasSources(data.sourceId)
+      val args = PhewasSources(data.sourceId)
       val normP =
-        Utilities.scorePValue(pValue, rng = (params.rangeMin, params.rangeMax))
-      val normN = Utilities.normalize(nCases, (0, params.maxCases), (0, 1))
-      Some(normP * normN)
+        Utilities.scorePValue(pValue, rng = (args.rangeMin, args.rangeMax))
+      val normN = Utilities.normalize(nCases, (0, args.maxCases), (0, 1))
+      Score
+        .using(params.weights)
+        .add(ComponentName.v2d_score, normP)
+        .add(ComponentName.sample_size, normN)
+        .calculate()
     }
 
-    def scoreGwas(data: Record): Option[Double] = {
+    def scoreGwas(data: Record, params: Parameters): Option[Score] = {
       val pValue = data
         .get[Double](FieldName.evidence$variant2disease$resource_score$value)
         .get
@@ -193,10 +218,15 @@ object Scoring {
       // There is also an r2 term in the score (for LD presumably) but this field does not exist in the schema
       // See: https://github.com/opentargets/data_pipeline/blob/d82f4cfc1e92ab58f1ab5b5553a03742e808d9df/mrtarget/common/EvidenceString.py#L615
       // val r2 = data.get[Double](FieldName.unique_association_fields$r2).get
-      Some(normP * normN * g2vScore)
+      Score
+        .using(params.weights)
+        .add(ComponentName.v2d_score, normP)
+        .add(ComponentName.g2v_score, g2vScore)
+        .add(ComponentName.sample_size, normN)
+        .calculate()
     }
 
-    def scoreDefault(data: Record): Option[Double] = {
+    def scoreDefault(data: Record, params: Parameters): Option[Score] = {
       val g2vScore = data
         .get[Double](FieldName.evidence$gene2variant$resource_score$value)
         .get
@@ -214,16 +244,20 @@ object Scoring {
             s"Resource score type '$resourceScoreType' not valid"
           )
       }
-      Some(g2vScore * v2dScore)
+      Score
+        .using(params.weights)
+        .add(ComponentName.v2d_score, v2dScore)
+        .add(ComponentName.g2v_score, g2vScore)
+        .calculate()
     }
 
-    override def score(data: Record): Option[Double] = {
+    override def score(data: Record, params: Parameters): Option[Score] = {
       val g2vExists = data.exists(FieldPath.evidence$gene2variant)
       (g2vExists, data.sourceId) match {
-        case (false, _)                                      => scoreNoG2V(data)
-        case (_, s) if PhewasSources.contains(s)             => scorePhewas(data)
-        case (_, s) if s == DataSource.gwas_catalog.toString => scoreGwas(data)
-        case _                                               => scoreDefault(data)
+        case (false, _)                                      => scoreNoG2V(data, params)
+        case (_, s) if PhewasSources.contains(s)             => scorePhewas(data, params)
+        case (_, s) if s == DataSource.gwas_catalog.toString => scoreGwas(data, params)
+        case _                                               => scoreDefault(data, params)
       }
     }
   }

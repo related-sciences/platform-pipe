@@ -1,4 +1,4 @@
-import com.relatedsciences.opentargets.pipeline.Scoring.Scorer
+import com.relatedsciences.opentargets.pipeline.scoring.Scoring.Scorer
 
 abstract class Processor {
   def run(row: String): String

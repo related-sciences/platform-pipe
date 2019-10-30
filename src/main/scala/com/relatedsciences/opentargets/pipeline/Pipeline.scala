@@ -1,14 +1,13 @@
 /**
   * OpenTargets scoring pipeline based on https://github.com/opentargets/data_pipeline
-  *
-  * Usage: /usr/spark-2.4.1/bin/spark-shell --driver-memory 4g --executor-memory 6g --executor-cores 8 -i ScoringPipeline.scala
   */
 package com.relatedsciences.opentargets.pipeline
 import java.text.SimpleDateFormat
 import java.util.Calendar
 
-import com.relatedsciences.opentargets.pipeline.Scoring.UnsupportedDataTypeException
+import com.relatedsciences.opentargets.pipeline.scoring.Scoring.UnsupportedDataTypeException
 import com.relatedsciences.opentargets.pipeline.schema.Fields.{FieldName, FieldPath}
+import com.relatedsciences.opentargets.pipeline.scoring.{Parameters, Score, Scoring}
 import org.apache.spark.sql.expressions.Window
 import org.apache.spark.sql.functions._
 import org.apache.spark.sql.{DataFrame, Row, SparkSession}
@@ -37,7 +36,7 @@ class Pipeline(spark: SparkSession, config: Configuration = Configuration.defaul
     val valueCols = valueFields.zipped.toList.sorted.map(t => col(t._1).as(t._2))
     val pathCols  = pathFields.zipped.toList.sorted.map(t => col(t._1).isNotNull.as(t._2))
     spark.read
-      .json(config.inputDir.resolve("evidence.json").toString)
+      .json(config.inputPath.resolve("evidence.json").toString)
       .select(
         $"target.id".as("target_id"),
         $"private.efo_codes".as("efo_codes"),
@@ -76,7 +75,7 @@ class Pipeline(spark: SparkSession, config: Configuration = Configuration.defaul
     * Load preprocessed frame
     */
   def getPreprocessedEvidence: DataFrame = {
-    spark.read.parquet(config.outputDir.resolve("evidence.parquet").toString)
+    spark.read.parquet(config.outputPath.resolve("evidence.parquet").toString)
   }
 
   /**
@@ -89,18 +88,17 @@ class Pipeline(spark: SparkSession, config: Configuration = Configuration.defaul
     /* WARNING: keep the config out of the UDF closure as it will cause serialization errors */
     // TODO: Stop using path objects in the config -- that's probably why they won't serialize
     val allowUnknownDataType = config.allowUnknownDataType
-    val scoringUdf = udf { (id: String, typeId: String, sourceId: String, resourceData: Row) =>
-      {
+    val scoringUdf = udf((id: String, typeId: String, sourceId: String, resourceData: Row) =>
         try {
-          // TODO: Support scores that can't be computed for one reason or another
-          Scoring.score(id, typeId, sourceId, resourceData).get
+          val record = new Record(id, typeId, sourceId, resourceData)
+          val params = Parameters.default()
+          Scoring.score(record, params).get
         } catch {
           case _: UnsupportedDataTypeException if allowUnknownDataType => 0.0
-          case e: Throwable                                            => throw e
+          case e: Throwable => throw e
         }
-      }
-    }
-    df.withColumn("score_resource", scoringUdf($"id", $"type_id", $"source_id", $"resource_data"))
+    , Score.Schema)
+    df.withColumn("score_resource", scoringUdf($"id", $"type_id", $"source_id", $"resource_data")("score"))
   }
 
   /**
@@ -195,7 +193,7 @@ class Pipeline(spark: SparkSession, config: Configuration = Configuration.defaul
     logger.info("Extract necessary fields and prepare disease ids for expansion")
     val df = getRawEvidence.transform(prepareDiseaseIds)
 
-    val path = config.outputDir.resolve("evidence.parquet")
+    val path = config.outputPath.resolve("evidence.parquet")
     df.write.format("parquet").mode("overwrite").save(path.toString)
     logger.info(s"Saved preprocessed evidence data to $path")
 
@@ -203,21 +201,33 @@ class Pipeline(spark: SparkSession, config: Configuration = Configuration.defaul
     this
   }
 
-  def runScoring(): Pipeline = {
+  def runScoring(targets: Option[Seq[Any]] = None, diseases: Option[Seq[Any]] = None): Pipeline = {
     val logger = Logger
     logger.info("Beginning scoring pipeline")
 
     logger.info("Fetching evidence data and computing resource scores")
     var df = getPreprocessedEvidence.transform(computeResourceScores)
 
+    // Apply target filters if necessary
+    if (targets.isDefined){
+      logger.info("Applying target filters")
+      df = df.filter($"target_id".isin(targets.get: _*))
+    }
+
     logger.info("Exploding records across disease ontology")
     df = df.transform(explodeByDiseaseId)
+
+    // Apply disease filters if necessary (after explosion to rows)
+    if (diseases.isDefined){
+      logger.info("Applying disease filters")
+      df = df.filter($"disease_id".isin(diseases.get: _*))
+    }
 
     logger.info("Computing harmonic sum factors with source specific weights")
     df = df.transform(computeSourceScores)
 
     if (config.saveEvidenceScores) {
-      val path = config.outputDir.resolve("score_evidence.parquet")
+      val path = config.outputPath.resolve("score_evidence.parquet")
       df.write.format("parquet").mode("overwrite").save(path.toString)
       logger.info(s"Saved evidence-level scores to $path")
     }
@@ -228,11 +238,11 @@ class Pipeline(spark: SparkSession, config: Configuration = Configuration.defaul
     logger.info("Computing association level scores")
     val dfa = dfs.transform(aggregateAssociationScores)
 
-    var path = config.outputDir.resolve("score_source.parquet")
+    var path = config.outputPath.resolve("score_source.parquet")
     dfs.write.format("parquet").mode("overwrite").save(path.toString)
     logger.info(s"Saved source-level data to $path")
 
-    path = config.outputDir.resolve("score_association.parquet")
+    path = config.outputPath.resolve("score_association.parquet")
     dfa.write.format("parquet").mode("overwrite").save(path.toString)
     logger.info(s"Saved source-level data to $path")
 

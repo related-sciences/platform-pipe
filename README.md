@@ -1,5 +1,13 @@
-# ot-scoring
-Dynamic scoring infrastructure for Open Targets
+# OpenTargets Scoring
+
+The purpose of this project is to adapt [data_pipeline](https://github.com/opentargets/data_pipeline) to a Scala/Spark
+infrastructure so that target/disease association scoring can be both more efficient and configurable.
+
+At present, this pipeline uses some of the schema validation and data sanitation present in [data_pipeline]([data_pipeline](https://github.com/opentargets/data_pipeline))
+but then conducts all further scoring in a two-stage process.  The first generates a parquet dataset most amenable to
+quickly scoring associations given a set of configurable weights for sources, data types, and individual resource 
+score components (e.g. GWAS sample size, p-value, and gene to variant confidence).  The second combines this data
+with a set of weights (possibly via RPC in the future) to compute scores across all data sources.  At present this 
 
 
 ## Developer Notes
