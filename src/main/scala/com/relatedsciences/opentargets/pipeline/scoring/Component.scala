@@ -12,6 +12,7 @@ object Component {
 
   object ComponentName extends Enumeration {
     val resource_score, sample_size, drug2clinic, target2drug, disease_model_association, p_value,
-    log2_fold_scale_factor, log2_fold_change_rank, mutation_frequency, v2d_score, g2v_score = Value
+        log2_fold_scale_factor, log2_fold_change_rank, mutation_frequency, v2d_score, g2v_score =
+      Value
   }
 }

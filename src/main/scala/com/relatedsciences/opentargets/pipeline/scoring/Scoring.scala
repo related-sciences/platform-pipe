@@ -18,12 +18,12 @@ object Scoring {
   }
 
   /**
-  * Compute the association score for a single evidence string record
-   *
-   * @param data record object containing evidence data as well as provenance (data source, type, etc.)
-   * @param params parameters to be used in scoring (e.g. field weights)
-   * @return Option[Score]
-   */
+    * Compute the association score for a single evidence string record
+    *
+    * @param data record object containing evidence data as well as provenance (data source, type, etc.)
+    * @param params parameters to be used in scoring (e.g. field weights)
+    * @return Option[Score]
+    */
   def score(data: Record, params: Parameters): Option[Score] = {
     Scorer.byTypeId(data.typeId) match {
       case Some(scorer) =>
@@ -39,8 +39,6 @@ object Scoring {
     }
   }
 
-
-
   abstract class Scorer {
     def score(data: Record, params: Parameters): Option[Score]
   }
@@ -49,10 +47,14 @@ object Scoring {
     override def score(data: Record, params: Parameters): Option[Score] = {
       Score
         .using(params.weights)
-        .add(ComponentName.drug2clinic,
-             data.get[Double](FieldName.evidence$drug2clinic$resource_score$value).get)
-        .add(ComponentName.target2drug,
-             data.get[Long](FieldName.evidence$target2drug$resource_score$value).get)
+        .add(
+          ComponentName.drug2clinic,
+          data.get[Double](FieldName.evidence$drug2clinic$resource_score$value).get
+        )
+        .add(
+          ComponentName.target2drug,
+          data.get[Long](FieldName.evidence$target2drug$resource_score$value).get
+        )
         .calculate()
     }
   }
@@ -63,7 +65,8 @@ object Scoring {
         .using(params.weights)
         .add(
           ComponentName.disease_model_association,
-          data.get[Double](FieldName.evidence$disease_model_association$resource_score$value).get)
+          data.get[Double](FieldName.evidence$disease_model_association$resource_score$value).get
+        )
         .calculate()
     }
   }
@@ -92,7 +95,7 @@ object Scoring {
       var score = data.get[Double](FieldName.evidence$resource_score$value).get
       val dataTypeId =
         data.get[String](FieldName.evidence$resource_score$type).get
-      if (dataTypeId == "pvalue"){
+      if (dataTypeId == "pvalue") {
         // Convert 0-1 p value score to .5 to 1 scale
         // See: https://github.com/opentargets/data_pipeline/blob/d82f4cfc1e92ab58f1ab5b5553a03742e808d9df/mrtarget/common/EvidenceString.py#L660
         score = .5 * Utilities.scorePValue(score, rng = (1e-14, 1e-4)) + .5
@@ -107,7 +110,7 @@ object Scoring {
   class LiteratureScorer extends Scorer {
     override def score(data: Record, params: Parameters): Option[Score] = {
       var score = data.get[Double](FieldName.evidence$resource_score$value).get
-      if (data.sourceId == DataSource.europepmc.toString){
+      if (data.sourceId == DataSource.europepmc.toString) {
         score = Math.min(score / 100.0, 1.0)
       }
       Score

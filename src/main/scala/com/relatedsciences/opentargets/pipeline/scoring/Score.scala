@@ -16,21 +16,21 @@ object Score {
     new Score(score, components)
   }
 
-  def using(weights: Map[ComponentName.Value, Double]): ScoreBuilder ={
+  def using(weights: Map[ComponentName.Value, Double]): ScoreBuilder = {
     new ScoreBuilder(weights)
   }
 }
 
 class ScoreBuilder(weights: Map[ComponentName.Value, Double]) {
-  var items:List[Component] = List()
+  var items: List[Component] = List()
 
-  def add(component: ComponentName.Value, value: Double): ScoreBuilder ={
+  def add(component: ComponentName.Value, value: Double): ScoreBuilder = {
     val weight = this.weights(component)
     this.items = new Component(component.toString, value, weight) :: this.items
     this
   }
-  def get(transform: Double => Double = identity): Score ={
-    if (this.items.isEmpty){
+  def get(transform: Double => Double = identity): Score = {
+    if (this.items.isEmpty) {
       throw new IllegalStateException("At least one score component must be added")
     }
     Score.from(this.items.toArray, transform)

@@ -16,7 +16,7 @@ case class Configuration(
     saveEvidenceScores: Boolean = false
 ) {
 
-  def inputPath: Path = Paths.get(inputDir)
+  def inputPath: Path  = Paths.get(inputDir)
   def outputPath: Path = Paths.get(outputDir)
   def configPath: Path = Paths.get(configDir)
 
@@ -46,7 +46,8 @@ object Configuration {
       inputDir = Paths.get(System.getProperty("user.home"), "data", "ot", "extract").toString,
       outputDir = Paths.get(System.getProperty("user.home"), "data", "ot", "results").toString,
       configDir = Paths
-        .get(System.getProperty("user.home"), "repos", "ot-scoring", "config").toString
+        .get(System.getProperty("user.home"), "repos", "ot-scoring", "config")
+        .toString
     )
   }
 }

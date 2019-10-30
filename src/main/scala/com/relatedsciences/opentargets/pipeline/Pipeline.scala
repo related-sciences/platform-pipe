@@ -88,17 +88,22 @@ class Pipeline(spark: SparkSession, config: Configuration = Configuration.defaul
     /* WARNING: keep the config out of the UDF closure as it will cause serialization errors */
     // TODO: Stop using path objects in the config -- that's probably why they won't serialize
     val allowUnknownDataType = config.allowUnknownDataType
-    val scoringUdf = udf((id: String, typeId: String, sourceId: String, resourceData: Row) =>
+    val scoringUdf = udf(
+      (id: String, typeId: String, sourceId: String, resourceData: Row) =>
         try {
           val record = new Record(id, typeId, sourceId, resourceData)
           val params = Parameters.default()
           Scoring.score(record, params).get
         } catch {
           case _: UnsupportedDataTypeException if allowUnknownDataType => 0.0
-          case e: Throwable => throw e
-        }
-    , Score.Schema)
-    df.withColumn("score_resource", scoringUdf($"id", $"type_id", $"source_id", $"resource_data")("score"))
+          case e: Throwable                                            => throw e
+        },
+      Score.Schema
+    )
+    df.withColumn(
+      "score_resource",
+      scoringUdf($"id", $"type_id", $"source_id", $"resource_data")("score")
+    )
   }
 
   /**
@@ -209,7 +214,7 @@ class Pipeline(spark: SparkSession, config: Configuration = Configuration.defaul
     var df = getPreprocessedEvidence.transform(computeResourceScores)
 
     // Apply target filters if necessary
-    if (targets.isDefined){
+    if (targets.isDefined) {
       logger.info("Applying target filters")
       df = df.filter($"target_id".isin(targets.get: _*))
     }
@@ -218,7 +223,7 @@ class Pipeline(spark: SparkSession, config: Configuration = Configuration.defaul
     df = df.transform(explodeByDiseaseId)
 
     // Apply disease filters if necessary (after explosion to rows)
-    if (diseases.isDefined){
+    if (diseases.isDefined) {
       logger.info("Applying disease filters")
       df = df.filter($"disease_id".isin(diseases.get: _*))
     }

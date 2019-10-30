@@ -4,13 +4,13 @@ import com.relatedsciences.opentargets.pipeline.schema.Fields.{FieldName, FieldP
 import org.apache.spark.sql.Row
 
 /**
- * Model object for evidence data
- *
- * @param id identifier for evidence string
- * @param typeId type associated with data (e.g. rna_expression, somatic_mutation, genetic_association)
- * @param sourceId source of data for the given type (e.g. gwas_catalog, twentythreeandme, sysbio)
- * @param row evidence data
- */
+  * Model object for evidence data
+  *
+  * @param id identifier for evidence string
+  * @param typeId type associated with data (e.g. rna_expression, somatic_mutation, genetic_association)
+  * @param sourceId source of data for the given type (e.g. gwas_catalog, twentythreeandme, sysbio)
+  * @param row evidence data
+  */
 class Record(val id: String, val typeId: String, val sourceId: String, val row: Row) {
   def get[T](field: FieldName.Value): Option[T] = {
     val f = FieldName.flatName(field)
