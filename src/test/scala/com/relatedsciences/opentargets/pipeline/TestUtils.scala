@@ -7,9 +7,9 @@ object TestUtils {
     val path =
       Paths.get(getClass.getResource("/pipeline_test/config/scoring.yml").getPath).getParent
     Configuration(
-      inputDir = path.getParent.resolve("input"),
-      outputDir = path.getParent.resolve("output"),
-      configDir = path,
+      inputDir = path.getParent.resolve("input").toString,
+      outputDir = path.getParent.resolve("output").toString,
+      configDir = path.toString,
       allowUnknownDataType = true,
       saveEvidenceScores = true
     )

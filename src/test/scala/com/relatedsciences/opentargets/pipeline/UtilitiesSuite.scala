@@ -10,7 +10,7 @@ class UtilitiesSuite extends FunSuite {
     assert(expected === actual)
   }
 
-  test("normalization works for valid cases") {
+  test("normalization") {
     assertEqual(.5)(Utilities.normalize(1.5, (1, 2), (0, 1)))
     assertEqual(1.75)(Utilities.normalize(.75, (0, 1), (1, 2)))
     assertEqual(1)(Utilities.normalize(0, (0, 1), (1, 2)))

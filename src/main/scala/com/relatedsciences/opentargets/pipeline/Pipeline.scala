@@ -13,7 +13,7 @@ import java.text.SimpleDateFormat
 import java.util.Calendar
 
 import com.relatedsciences.opentargets.pipeline.scoring.Scoring.UnsupportedDataTypeException
-import com.relatedsciences.opentargets.pipeline.schema.Fields.{FieldName, FieldPath}
+import com.relatedsciences.opentargets.pipeline.schema.Fields
 import com.relatedsciences.opentargets.pipeline.scoring.{Parameters, Score, Scoring}
 import org.apache.spark.sql.expressions.Window
 import org.apache.spark.sql.functions._
@@ -36,12 +36,7 @@ class Pipeline(spark: SparkSession, config: Configuration = Configuration.defaul
     * Extract nested fields and subset raw evidence strings to tabular frame.
     */
   def getRawEvidence: DataFrame = {
-    val valueFields =
-      (FieldName.values.map(FieldName.pathName), FieldName.values.map(FieldName.flatName))
-    val pathFields =
-      (FieldPath.values.map(FieldPath.pathName), FieldPath.values.map(FieldPath.flatName))
-    val valueCols = valueFields.zipped.toList.sorted.map(t => col(t._1).as(t._2))
-    val pathCols  = pathFields.zipped.toList.sorted.map(t => col(t._1).isNotNull.as(t._2))
+    val resourceDataFields = Fields.allColumns.toList
     spark.read
       .json(config.inputPath.resolve("evidence.json").toString)
       .select(
@@ -51,7 +46,7 @@ class Pipeline(spark: SparkSession, config: Configuration = Configuration.defaul
         $"type".as("type_id"),
         $"sourceID".as("source_id"),
         $"id",
-        struct(valueCols ++ pathCols: _*).as("resource_data")
+        struct(resourceDataFields: _*).as("resource_data")
       )
   }
 

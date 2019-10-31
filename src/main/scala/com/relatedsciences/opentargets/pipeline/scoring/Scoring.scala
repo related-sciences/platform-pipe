@@ -1,6 +1,6 @@
 package com.relatedsciences.opentargets.pipeline.scoring
 
-import com.relatedsciences.opentargets.pipeline.schema.Fields.{FieldName, FieldPath}
+import com.relatedsciences.opentargets.pipeline.schema.Fields.FieldName
 import com.relatedsciences.opentargets.pipeline.schema.{DataSource, DataType}
 import com.relatedsciences.opentargets.pipeline.scoring.Component.ComponentName
 import com.relatedsciences.opentargets.pipeline.{Record, Utilities}
@@ -41,6 +41,7 @@ object Scoring {
 
   abstract class Scorer {
     def score(data: Record, params: Parameters): Option[Score]
+    def fields: Set[FieldName.Val]
   }
 
   class KnownDrugScorer extends Scorer {
@@ -57,6 +58,12 @@ object Scoring {
         )
         .calculate()
     }
+
+    override def fields: Set[FieldName.Val] =
+      Set(
+        FieldName.evidence$drug2clinic$resource_score$value,
+        FieldName.evidence$target2drug$resource_score$value
+      )
   }
 
   class AnimalModelScorer extends Scorer {
@@ -69,6 +76,9 @@ object Scoring {
         )
         .calculate()
     }
+
+    override def fields: Set[FieldName.Val] =
+      Set(FieldName.evidence$disease_model_association$resource_score$value)
   }
 
   class RnaExpressionScorer extends Scorer {
@@ -88,6 +98,12 @@ object Scoring {
         .add(ComponentName.log2_fold_change_rank, pRank)
         .calculate(Math.min(_, 1.0))
     }
+
+    override def fields: Set[FieldName.Val] = Set(
+      FieldName.evidence$resource_score$value,
+      FieldName.evidence$log2_fold_change$value,
+      FieldName.evidence$log2_fold_change$percentile_rank
+    )
   }
 
   class AffectedPathwayScorer extends Scorer {
@@ -105,6 +121,11 @@ object Scoring {
         .add(ComponentName.resource_score, score)
         .calculate()
     }
+
+    override def fields: Set[FieldName.Val] = Set(
+      FieldName.evidence$resource_score$value,
+      FieldName.evidence$resource_score$type
+    )
   }
 
   class LiteratureScorer extends Scorer {
@@ -118,6 +139,10 @@ object Scoring {
         .add(ComponentName.resource_score, score)
         .calculate()
     }
+
+    override def fields: Set[FieldName.Val] = Set(
+      FieldName.evidence$resource_score$value
+    )
   }
 
   class SomaticMutationScorer extends Scorer {
@@ -162,6 +187,11 @@ object Scoring {
         .add(ComponentName.mutation_frequency, frequency)
         .calculate()
     }
+
+    override def fields: Set[FieldName.Val] = Set(
+      FieldName.evidence$resource_score$value,
+      FieldName.evidence$known_mutations
+    )
   }
 
   class GeneticAssociationScorer extends Scorer {
@@ -255,7 +285,7 @@ object Scoring {
     }
 
     override def score(data: Record, params: Parameters): Option[Score] = {
-      val g2vExists = data.exists(FieldPath.evidence$gene2variant)
+      val g2vExists = data.exists(FieldName.evidence$gene2variant$exists)
       (g2vExists, data.sourceId) match {
         case (false, _)                                      => scoreNoG2V(data, params)
         case (_, s) if PhewasSources.contains(s)             => scorePhewas(data, params)
@@ -263,6 +293,16 @@ object Scoring {
         case _                                               => scoreDefault(data, params)
       }
     }
+    override def fields: Set[FieldName.Val] = Set(
+      FieldName.evidence$resource_score$value,
+      FieldName.evidence$resource_score$type,
+      FieldName.evidence$gene2variant$resource_score$value,
+      FieldName.evidence$gene2variant$exists,
+      FieldName.evidence$variant2disease$resource_score$value,
+      FieldName.evidence$variant2disease$resource_score$type,
+      FieldName.evidence$variant2disease$gwas_sample_size,
+      FieldName.unique_association_fields$cases
+    )
   }
 
   /**

@@ -1,6 +1,6 @@
 package com.relatedsciences.opentargets.pipeline
 
-import com.relatedsciences.opentargets.pipeline.schema.Fields.{FieldName, FieldPath}
+import com.relatedsciences.opentargets.pipeline.schema.Fields.FieldName
 import org.apache.spark.sql.Row
 
 /**
@@ -12,12 +12,13 @@ import org.apache.spark.sql.Row
   * @param row evidence data
   */
 class Record(val id: String, val typeId: String, val sourceId: String, val row: Row) {
-  def get[T](field: FieldName.Value): Option[T] = {
+  def get[T](field: FieldName.Val): Option[T] = {
     val f = FieldName.flatName(field)
     if (row.isNullAt(row.fieldIndex(f))) None else Some(row.getAs[T](f))
   }
-  def exists(field: FieldPath.Value): Boolean = {
-    row.getAs(FieldPath.flatName(field))
+  def exists(field: FieldName.Val): Boolean = {
+    require(field.isPath)
+    row.getAs(FieldName.flatName(field))
   }
   override def toString: String = {
     "{id: %s, typeId: %s, sourceId: %s, data: %s}".format(

@@ -1,4 +1,6 @@
 #!/bin/bash
 echo "Running scalafmt"
 scalafmt --diff --config .scalafmt.conf src/
+# While generally discouraged, scalafmt seems trustworthy enough to automatically
+# add new changes to staging (see: https://github.com/pre-commit/pre-commit/issues/806)
 git add -u
