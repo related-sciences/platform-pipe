@@ -10,6 +10,7 @@ object TestUtils {
       inputDir = path.getParent.resolve("input").toString,
       outputDir = path.getParent.resolve("output").toString,
       configDir = path.toString,
+      evidenceFileName = "evidence.json.gz",
       allowUnknownDataType = true,
       saveEvidenceScores = true
     )

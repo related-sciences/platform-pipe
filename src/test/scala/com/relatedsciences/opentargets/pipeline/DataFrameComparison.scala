@@ -11,6 +11,7 @@ import org.apache.spark.sql.{DataFrame, Row}
 trait DataFrameComparison {
 
   val maxUnequalRowsToShow = 10
+  val epsilon              = .000001
 
   def error(msg: String) = throw new AssertionError(msg)
 
@@ -18,7 +19,7 @@ trait DataFrameComparison {
     * Compares if two [[DataFrame]]s are equal, checks the schema and then if that matches
     * checks if the rows are equal.
     */
-  def assertDataFrameEquals(res: DataFrame, expected: DataFrame, tol: Double = 0.01): Unit = {
+  def assertDataFrameEquals(res: DataFrame, expected: DataFrame, tol: Double = epsilon): Unit = {
 
     if (expected.schema != res.schema) {
       error(

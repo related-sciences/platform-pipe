@@ -38,7 +38,7 @@ class Pipeline(spark: SparkSession, config: Configuration = Configuration.defaul
   def getRawEvidence: DataFrame = {
     val resourceDataFields = Fields.allColumns.toList
     spark.read
-      .json(config.inputPath.resolve("evidence.json").toString)
+      .json(config.inputPath.resolve(config.evidenceFileName).toString)
       .select(
         $"target.id".as("target_id"),
         $"private.efo_codes".as("efo_codes"),

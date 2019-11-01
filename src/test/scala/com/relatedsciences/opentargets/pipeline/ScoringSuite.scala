@@ -9,8 +9,6 @@ import org.apache.spark.sql.types.DoubleType
 
 class ScoringSuite extends FunSuite with SparkSessionWrapper with DataFrameComparison {
 
-  val Epsilon = .000001
-
   def assertScores(dataType: DataType.Value): Unit = {
     // Load the test data for the data type (which will contain expected scores)
     val path = getClass.getResource(s"/scorer_test/$dataType.json").getPath
@@ -46,7 +44,7 @@ class ScoringSuite extends FunSuite with SparkSessionWrapper with DataFrameCompa
       .withColumnRenamed("actual_score", "score")
 
     // Validate equality, which will print helpful errors
-    assertDataFrameEquals(dfExpected, dfActual, tol = Epsilon)
+    assertDataFrameEquals(dfExpected, dfActual, tol = epsilon)
   }
 
   test("known_drug score calculations") {

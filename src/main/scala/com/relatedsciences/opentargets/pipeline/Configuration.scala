@@ -11,6 +11,7 @@ case class Configuration(
     inputDir: String,
     outputDir: String,
     configDir: String,
+    evidenceFileName: String = "evidence.json",
     allowUnknownDataType: Boolean = true,
     allowMissingScore: Boolean = false,
     saveEvidenceScores: Boolean = false
