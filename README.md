@@ -1,3 +1,5 @@
+[![Build Status](https://travis-ci.org/related-sciences/ot-scoring.svg?branch=master)](https://travis-ci.org/related-sciences/ot-scoring)
+
 # OpenTargets Scoring
 
 The purpose of this project is to adapt [data_pipeline](https://github.com/opentargets/data_pipeline) to a Scala/Spark
@@ -8,8 +10,8 @@ but then conducts all further scoring in a two-stage process.  The first generat
 quickly scoring associations given a set of configurable weights for sources, data types, and individual resource 
 score components (e.g. GWAS sample size, p-value, and gene to variant confidence).  The second combines this data
 with a set of weights (possibly via RPC in the future) to compute scores across all data sources.  This second stage 
-currently runs in about 15 seconds for all targets + diseases (sans EuropePMC) and ~1 or 2 seconds for a single
-target/disease.
+currently runs in about 15 seconds for all targets + diseases (sans EuropePMC) and ~1 second for a single
+target/disease (w/ Spark local mode).
 
 
 ## Developer Notes
