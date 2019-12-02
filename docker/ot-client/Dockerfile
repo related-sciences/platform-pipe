@@ -3,7 +3,7 @@ ARG USERNAME
 ARG USERID
 
 # Match client user
-RUN useradd -ms /bin/bash -u $USERID $USERNAME
+RUN adduser --disabled-password --gecos '' --home /home/$USERNAME --uid $USERID --shell /bin/bash $USERNAME
 RUN usermod -aG sudo $USERNAME
 RUN echo "$USERNAME     ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
 
@@ -58,9 +58,10 @@ RUN curl -sL --retry 3 \
  && rm -rf $HADOOP_HOME/share/doc \
  && chown -R root:root $HADOOP_HOME
 
-# SPARK
-ENV SPARK_VERSION 2.4.1
-ENV SPARK_PACKAGE spark-${SPARK_VERSION}-bin-without-hadoop
+# SPARK (use Scala 2.12 build rather than default 2.11 build)
+# See release notes in https://databricks.com/blog/2018/11/08/introducing-apache-spark-2-4.html on Scala 2.12 support
+ENV SPARK_VERSION 2.4.4
+ENV SPARK_PACKAGE spark-${SPARK_VERSION}-bin-without-hadoop-scala-2.12
 ENV SPARK_HOME /usr/spark-${SPARK_VERSION}
 ENV SPARK_DIST_CLASSPATH="$HADOOP_HOME/etc/hadoop/*:$HADOOP_HOME/share/hadoop/common/lib/*:$HADOOP_HOME/share/hadoop/common/*:$HADOOP_HOME/share/hadoop/hdfs/*:$HADOOP_HOME/share/hadoop/hdfs/lib/*:$HADOOP_HOME/share/hadoop/hdfs/*:$HADOOP_HOME/share/hadoop/yarn/lib/*:$HADOOP_HOME/share/hadoop/yarn/*:$HADOOP_HOME/share/hadoop/mapreduce/lib/*:$HADOOP_HOME/share/hadoop/mapreduce/*:$HADOOP_HOME/share/hadoop/tools/lib/*"
 ENV PATH $PATH:${SPARK_HOME}/bin
@@ -110,12 +111,17 @@ RUN curl -L -o sbt.deb https://dl.bintray.com/sbt/debian/sbt-1.3.3.deb && dpkg -
 
 # Jupyter
 RUN pip install --upgrade toree
-RUN jupyter toree install --spark_home=/usr/spark-2.4.1/
+RUN jupyter toree install --spark_home=/usr/spark-${SPARK_VERSION}/
 COPY kernel.json /usr/local/share/jupyter/kernels/apache_toree_scala/kernel.json
 
 # Shell Utilities
 RUN apt-get update && apt-get -y install htop vim
 RUN echo "N" | apt-get install sudo
+
+# Ammonite (for Scala 2.12)
+RUN echo '#!/usr/bin/env sh' > /usr/local/bin/amm && \
+    curl -L https://github.com/lihaoyi/Ammonite/releases/download/1.8.2/2.12-1.8.2 >> /usr/local/bin/amm && \
+    chmod +x /usr/local/bin/amm
 
 WORKDIR /home/$USERNAME
 RUN mkdir repos data

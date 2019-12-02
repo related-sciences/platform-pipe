@@ -43,3 +43,22 @@ ln -s $PWD/hooks/pre-commit.scalafmt .git/hooks/pre-commit
 
 After this, every commit will trigger scalafmt to run and ```--no-verify``` can be 
 used to ignore that step if absolutely necessary.
+
+### Execution
+
+To build a fat jar for standalone execution:
+
+```
+# On the docker container (ot-client)
+cd ~/repos/ot-scoring
+sbt "set test in assembly := {}" clean assembly
+```
+
+To build a local jar for execution via remote Spark installation:
+
+```
+# On localhost
+sbt package 
+# Ship jar and run on docker container:
+spark-shell ... --jars /target/scala-2.12/ot-scoring_2.12-0.1.jar -i ... 
+```

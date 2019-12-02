@@ -3,15 +3,13 @@
   *
   * Usage (Interactive):
   * ```
-  * /usr/spark-2.4.1/bin/spark-shell --driver-memory 12g --jars target/scala-2.11/ot-scoring_2.11-0.1.jar
+  * /usr/spark-2.4.4/bin/spark-shell --driver-memory 12g --jars target/scala-2.12/ot-scoring_2.12-0.1.jar
   * > import com.relatedsciences.opentargets.pipeline.Pipeline
   * > new Pipeline(spark).runScoring(targets=Some(Seq("ENSG00000162434")), diseases=Some(Seq("EFO_0000181")))
   * ```
   */
 package com.relatedsciences.opentargets.pipeline
-import java.text.SimpleDateFormat
-import java.util.Calendar
-
+import org.apache.log4j.Logger
 import com.relatedsciences.opentargets.pipeline.scoring.Scoring.UnsupportedDataTypeException
 import com.relatedsciences.opentargets.pipeline.schema.Fields
 import com.relatedsciences.opentargets.pipeline.scoring.{Parameters, Score, Scoring}
@@ -21,16 +19,9 @@ import org.apache.spark.sql.{DataFrame, Row, SparkSession}
 
 class Pipeline(spark: SparkSession, config: Configuration = Configuration.default()) {
 
-  import spark.implicits._
+  @transient lazy val logger: Logger = Logger.getLogger(getClass.getName)
 
-  /** TODO: Fix lazy ass logging; figure out how to choose framework compatible with other classpath entries */
-  object Logger {
-    def info(msg: String): Unit = {
-      val format    = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss")
-      val timestamp = format.format(Calendar.getInstance().getTime)
-      println(timestamp + ": " + msg)
-    }
-  }
+  import spark.implicits._
 
   /**
     * Extract nested fields and subset raw evidence strings to tabular frame.
@@ -87,8 +78,6 @@ class Pipeline(spark: SparkSession, config: Configuration = Configuration.defaul
     * See: https://github.com/opentargets/data_pipeline/blob/7098546ee09ca1fc3c690a0bd6999b865ddfe646/mrtarget/common/EvidenceString.py#L570
     */
   def computeResourceScores(df: DataFrame): DataFrame = {
-    /* WARNING: keep the config out of the UDF closure as it will cause serialization errors */
-    // TODO: Stop using path objects in the config -- that's probably why they won't serialize
     val allowUnknownDataType = config.allowUnknownDataType
     val scoringUdf = udf(
       (id: String, typeId: String, sourceId: String, resourceData: Row) =>
@@ -194,7 +183,7 @@ class Pipeline(spark: SparkSession, config: Configuration = Configuration.defaul
   }
 
   def runPreprocessing(): Pipeline = {
-    val logger = Logger
+
     logger.info("Beginning preprocessing pipeline")
 
     logger.info("Extract necessary fields and prepare disease ids for expansion")
@@ -209,7 +198,6 @@ class Pipeline(spark: SparkSession, config: Configuration = Configuration.defaul
   }
 
   def runScoring(targets: Option[Seq[Any]] = None, diseases: Option[Seq[Any]] = None): Pipeline = {
-    val logger = Logger
     logger.info("Beginning scoring pipeline")
 
     logger.info("Fetching evidence data and computing resource scores")
