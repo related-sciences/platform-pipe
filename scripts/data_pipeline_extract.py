@@ -3,9 +3,9 @@
 #
 # Usage (in ot-import container):
 # cd ~/repos/ot-scoring/scripts
-# data_pipeline_extract.py --index=master_evidence-data --output-dir=~/data/ot/extract --output-filename=evidence.json
-# data_pipeline_extract.py --index=master_gene-data --output-dir=~/data/ot/extract --output-filename=gene.json
-# data_pipeline_extract.py --index=master_association-data --output-dir=~/data/ot/extract --output-filename=association.json
+# ./data_pipeline_extract.py --index=master_evidence-data --output-dir=~/data/ot/extract --output-filename=evidence.json
+# ./data_pipeline_extract.py --index=master_gene-data --output-dir=~/data/ot/extract --output-filename=gene.json
+# ./data_pipeline_extract.py --index=master_association-data --output-dir=~/data/ot/extract --output-filename=association.json
 from mrtarget.common.connection import new_es_client
 from elasticsearch import helpers
 from pathlib import Path

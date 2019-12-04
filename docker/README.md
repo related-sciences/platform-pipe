@@ -19,6 +19,8 @@ ot-client
 
 ## Import
 
+Docker container used to run data_pipeline commands (for ES extracts):
+
 ```
 cd $REPOS/ot-scoring/docker/ot-import
 docker build --build-arg USERNAME=$USER --build-arg USERID=$(id -u) --build-arg DATA_PIPELINE_DIR=/home/$USER/repos/data_pipeline -t ot-import .

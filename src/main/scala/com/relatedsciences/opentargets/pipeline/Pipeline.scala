@@ -9,7 +9,7 @@
   * ```
   */
 package com.relatedsciences.opentargets.pipeline
-import org.apache.log4j.Logger
+import com.typesafe.scalalogging.LazyLogging
 import com.relatedsciences.opentargets.pipeline.scoring.Scoring.UnsupportedDataTypeException
 import com.relatedsciences.opentargets.pipeline.schema.Fields
 import com.relatedsciences.opentargets.pipeline.scoring.{Parameters, Score, Scoring}
@@ -17,9 +17,8 @@ import org.apache.spark.sql.expressions.Window
 import org.apache.spark.sql.functions._
 import org.apache.spark.sql.{DataFrame, Row, SparkSession}
 
-class Pipeline(spark: SparkSession, config: Configuration = Configuration.default()) {
-
-  @transient lazy val logger: Logger = Logger.getLogger(getClass.getName)
+class Pipeline(spark: SparkSession, config: Configuration = Configuration.default())
+    extends LazyLogging {
 
   import spark.implicits._
 

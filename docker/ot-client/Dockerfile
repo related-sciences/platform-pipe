@@ -97,22 +97,8 @@ RUN wget --quiet https://repo.anaconda.com/miniconda/Miniconda3-4.7.12-Linux-x86
 # Image Configuration
 # ----------------------------------------------------------------------------------------------------------------------
 
-# Python Environment
-RUN mkdir -p /lab /lab/build
-WORKDIR /lab/build
-COPY environment.yml .
-RUN conda env create -f environment.yml
-RUN conda init bash
-RUN echo "conda activate ot-client" >> ~/.bashrc
-ENV PATH /opt/conda/envs/ot-client/bin:$PATH
-
 # SBT
 RUN curl -L -o sbt.deb https://dl.bintray.com/sbt/debian/sbt-1.3.3.deb && dpkg -i sbt.deb
-
-# Jupyter
-RUN pip install --upgrade toree
-RUN jupyter toree install --spark_home=/usr/spark-${SPARK_VERSION}/
-COPY kernel.json /usr/local/share/jupyter/kernels/apache_toree_scala/kernel.json
 
 # Shell Utilities
 RUN apt-get update && apt-get -y install htop vim
@@ -122,6 +108,28 @@ RUN echo "N" | apt-get install sudo
 RUN echo '#!/usr/bin/env sh' > /usr/local/bin/amm && \
     curl -L https://github.com/lihaoyi/Ammonite/releases/download/1.8.2/2.12-1.8.2 >> /usr/local/bin/amm && \
     chmod +x /usr/local/bin/amm
+
+# Python Environment
+RUN mkdir -p /lab/build
+RUN chown $USERNAME:$USERNAME /lab/build
+WORKDIR /lab/build
+COPY environment.yml .
+RUN conda env create -f environment.yml
+RUN conda init bash
+RUN echo "conda activate ot-client" >> ~/.bashrc
+ENV PATH /opt/conda/envs/ot-client/bin:$PATH
+
+# Almond (must install as user to use)
+USER $USERNAME
+RUN SCALA_VERSION=2.12.8 ALMOND_VERSION=0.9.0 && \
+    curl -Lo coursier https://git.io/coursier-cli && \
+    chmod +x coursier && \
+    ./coursier bootstrap \
+        -r jitpack \
+        -i user -I user:sh.almond:scala-kernel-api_$SCALA_VERSION:$ALMOND_VERSION \
+        sh.almond:scala-kernel_$SCALA_VERSION:$ALMOND_VERSION \
+        -o almond && \
+    ./almond --install
 
 WORKDIR /home/$USERNAME
 RUN mkdir repos data
