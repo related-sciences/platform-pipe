@@ -1,4 +1,5 @@
 [![Build Status](https://travis-ci.org/related-sciences/ot-scoring.svg?branch=master)](https://travis-ci.org/related-sciences/ot-scoring)
+[![codecov](https://codecov.io/gh/related-sciences/ot-scoring/branch/master/graph/badge.svg)](https://codecov.io/gh/related-sciences/ot-scoring)
 
 # OpenTargets Scoring
 

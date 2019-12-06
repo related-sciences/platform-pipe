@@ -18,17 +18,17 @@ object TestUtils {
   lazy val pipelineTestPath: Path =
     Paths.get(getClass.getResource("/pipeline_test/README.md").getPath).getParent
 
-  def getPipelineConfig(): ConfigurationOld = {
-    val path =
-      Paths.get(getClass.getResource("/pipeline_test/config/scoring.yml").getPath).getParent
-    ConfigurationOld(
-      inputDir = path.getParent.resolve("input").toString,
-      outputDir = path.getParent.resolve("output").toString,
-      configDir = path.toString,
-      evidenceFileName = "evidence.json.gz",
-      allowUnknownDataType = true,
-      saveEvidenceScores = true
-    )
-  }
+//  def getPipelineConfig(): ConfigurationOld = {
+//    val path =
+//      Paths.get(getClass.getResource("/pipeline_test/config/scoring.yml").getPath).getParent
+//    ConfigurationOld(
+//      inputDir = path.getParent.resolve("input").toString,
+//      outputDir = path.getParent.resolve("output").toString,
+//      configDir = path.toString,
+//      evidenceFileName = "evidence.json.gz",
+//      allowUnknownDataType = true,
+//      saveEvidenceScores = true
+//    )
+//  }
 
 }

@@ -19,7 +19,7 @@ abstract class Command(ss: SparkSession, config: Config) extends LazyLogging {
 object Command {
   sealed abstract class CommandEnum(val factory: (SparkSession, Config) => Command)
       extends EnumEntry
-      with Snakecase
+      with Hyphencase
 
   object CommandEnum extends Enum[CommandEnum] {
 

@@ -10,7 +10,14 @@ class PipelineState extends State with LazyLogging {
   case class Time(name: String, duration: Duration)
   var times = new ListBuffer[Time]()
 
+  case class Summary(name: String, count: Long, schema: String)
+  var summaries = new ListBuffer[Summary]
+
   override def addTime(name: String, duration: Duration): Unit = {
     times += Time(name, duration)
+  }
+
+  override def addSummary(name: String, count: Long, schema: String): Unit = {
+    summaries += Summary(name, count, schema)
   }
 }

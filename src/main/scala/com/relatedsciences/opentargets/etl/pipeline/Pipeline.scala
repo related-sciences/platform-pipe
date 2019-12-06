@@ -3,12 +3,8 @@ package com.relatedsciences.opentargets.etl.pipeline
 import java.util.NoSuchElementException
 
 import com.relatedsciences.opentargets.etl.configuration.Configuration.Config
-import com.relatedsciences.opentargets.etl.pipeline.Components.{
-  DecoratorEnum,
-  Operation,
-  Source,
-  State
-}
+import com.relatedsciences.opentargets.etl.pipeline.Components.{Operation, Source, State}
+import com.relatedsciences.opentargets.etl.pipeline.Decorator.DecoratorEnum
 import com.typesafe.scalalogging.LazyLogging
 
 import scala.util.{Failure, Success}
@@ -59,6 +55,10 @@ object Pipeline extends LazyLogging {
 
       def stop[B](name: String, f: A => B): Pipeline[B] = {
         new Pipeline(decorate(operation.map(name, f)), config)
+      }
+
+      def end(name: String = "end"): Pipeline[Unit] = {
+        stop(name, _ => ())
       }
     }
 
