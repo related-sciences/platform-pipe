@@ -1,7 +1,7 @@
-package com.relatedsciences.opentargets.pipeline
+package com.relatedsciences.opentargets.etl
 
-import com.relatedsciences.opentargets.pipeline.schema.DataType
-import com.relatedsciences.opentargets.pipeline.scoring.{Parameters, Scoring}
+import com.relatedsciences.opentargets.etl.schema.DataType
+import com.relatedsciences.opentargets.etl.scoring.{Parameters, Scoring}
 import org.scalatest.FunSuite
 import org.apache.spark.sql.Row
 import org.apache.spark.sql.functions._
@@ -12,7 +12,7 @@ class ScoringSuite extends FunSuite with SparkSessionWrapper with DataFrameCompa
   def assertScores(dataType: DataType.Value): Unit = {
     // Load the test data for the data type (which will contain expected scores)
     val path = getClass.getResource(s"/scorer_test/$dataType.json").getPath
-    var df   = spark.read.json(path)
+    var df   = ss.read.json(path)
 
     // Compute the actual scores given just the fields necessary for this source
     val scoreUDF = udf(

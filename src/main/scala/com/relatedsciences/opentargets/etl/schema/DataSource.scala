@@ -1,4 +1,4 @@
-package com.relatedsciences.opentargets.pipeline.schema
+package com.relatedsciences.opentargets.etl.schema
 
 object DataSource extends Enumeration {
   val europepmc, phewas_catalog, twentythreeandme, uniprot_somatic, progeny, sysbio, gene2phenotype,

@@ -1,6 +1,6 @@
-package com.relatedsciences.opentargets.pipeline.scoring
+package com.relatedsciences.opentargets.etl.scoring
 
-import com.relatedsciences.opentargets.pipeline.scoring.Component.ComponentName
+import com.relatedsciences.opentargets.etl.scoring.Component.ComponentName
 
 case class Parameters(weights: Map[ComponentName.Value, Double])
 

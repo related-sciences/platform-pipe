@@ -1,4 +1,5 @@
-package com.relatedsciences.opentargets.pipeline
+package com.relatedsciences.opentargets.etl
+import scala.concurrent.duration.{Duration, NANOSECONDS}
 import scala.io.Source
 
 object Utilities {
@@ -49,6 +50,19 @@ object Utilities {
     val pLinear = normalize(pValueLog, rngLog, (0.0, 1.0))
     assert(pLinear >= 0 && pLinear <= 1)
     1.0 - pLinear
+  }
+
+  class Stopwatch {
+    val startedAtNanos: Long = System.nanoTime()
+
+    def elapsed(): Duration = {
+      val nanos = (System.nanoTime() - startedAtNanos)
+      Duration(nanos, NANOSECONDS)
+    }
+  }
+
+  object Stopwatch {
+    def start(): Stopwatch = new Stopwatch
   }
 
 }

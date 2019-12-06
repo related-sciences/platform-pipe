@@ -1,6 +1,6 @@
-package com.relatedsciences.opentargets.pipeline
+package com.relatedsciences.opentargets.etl
 
-import com.relatedsciences.opentargets.pipeline.schema.Fields.FieldName
+import com.relatedsciences.opentargets.etl.schema.Fields.FieldName
 import org.apache.spark.sql.Row
 
 /**

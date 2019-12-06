@@ -1,4 +1,4 @@
-package com.relatedsciences.opentargets.pipeline
+package com.relatedsciences.opentargets.etl
 import org.scalatest.FunSuite
 import org.scalactic.{Equality, TolerantNumerics}
 

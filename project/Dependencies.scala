@@ -9,7 +9,12 @@ object Dependencies {
 
   lazy val configDeps = Seq(
     "org.yaml"              % "snakeyaml"   % "1.21",
-    "com.github.pureconfig" %% "pureconfig" % "0.10.1"
+    "com.github.pureconfig" %% "pureconfig" % "0.12.1"
+  )
+
+  lazy val codeDeps = Seq(
+    "com.beachape"     %% "enumeratum" % "1.5.13",
+    "com.github.scopt" %% "scopt"      % "3.7.1"
   )
 
   lazy val testingDeps = Seq(
@@ -22,4 +27,5 @@ object Dependencies {
     "org.apache.spark" %% "spark-sql"   % "2.4.4" % "provided",
     "org.apache.spark" %% "spark-mllib" % "2.4.4" % "provided"
   )
+
 }

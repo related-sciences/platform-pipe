@@ -1,6 +1,6 @@
-package com.relatedsciences.opentargets.pipeline.scoring
+package com.relatedsciences.opentargets.etl.scoring
 
-import com.relatedsciences.opentargets.pipeline.scoring.Component.ComponentName
+import com.relatedsciences.opentargets.etl.scoring.Component.ComponentName
 import org.apache.spark.sql.types.{ArrayType, DoubleType, StructType}
 
 case class Score(score: Double, components: Array[Component])

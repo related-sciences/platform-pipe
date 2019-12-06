@@ -120,6 +120,7 @@ RUN echo "conda activate ot-client" >> ~/.bashrc
 ENV PATH /opt/conda/envs/ot-client/bin:$PATH
 
 # Almond (must install as user to use)
+# Install options: https://almond.sh/docs/install-options
 USER $USERNAME
 RUN SCALA_VERSION=2.12.8 ALMOND_VERSION=0.9.0 && \
     curl -Lo coursier https://git.io/coursier-cli && \
@@ -129,7 +130,8 @@ RUN SCALA_VERSION=2.12.8 ALMOND_VERSION=0.9.0 && \
         -i user -I user:sh.almond:scala-kernel-api_$SCALA_VERSION:$ALMOND_VERSION \
         sh.almond:scala-kernel_$SCALA_VERSION:$ALMOND_VERSION \
         -o almond && \
-    ./almond --install
+    ./almond --install --metabrowse true \
+    --extra-repository https://jitpack.io
 
 WORKDIR /home/$USERNAME
 RUN mkdir repos data

@@ -5,15 +5,15 @@
     */
 import java.nio.file.{Files, Paths, StandardCopyOption}
 
-import com.relatedsciences.opentargets.pipeline.Configuration
-import com.relatedsciences.opentargets.pipeline.schema.{DataType, Fields}
-import com.relatedsciences.opentargets.pipeline.scoring.Scoring
+import com.relatedsciences.opentargets.etl.ConfigurationOld
+import com.relatedsciences.opentargets.etl.schema.{DataType, Fields}
+import com.relatedsciences.opentargets.etl.scoring.Scoring
 import org.apache.spark.sql.functions.{col, explode, udf}
 import org.apache.spark.sql._
 
 import scala.reflect.io.Directory
 
-val config = Configuration.default()
+val config = ConfigurationOld.default()
 
 // This is redundant in local mode with spark-shell but it makes IDE auto-builds
 // much more useful when assumed declared rather than implicit

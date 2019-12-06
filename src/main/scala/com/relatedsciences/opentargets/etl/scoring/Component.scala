@@ -1,4 +1,4 @@
-package com.relatedsciences.opentargets.pipeline.scoring
+package com.relatedsciences.opentargets.etl.scoring
 
 import org.apache.spark.sql.types.{DoubleType, StringType, StructType}
 

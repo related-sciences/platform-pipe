@@ -1,4 +1,4 @@
-package com.relatedsciences.opentargets.pipeline
+package com.relatedsciences.opentargets.etl
 
 import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.{DataFrame, Row}

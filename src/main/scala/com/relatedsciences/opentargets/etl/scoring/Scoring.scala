@@ -1,9 +1,9 @@
-package com.relatedsciences.opentargets.pipeline.scoring
+package com.relatedsciences.opentargets.etl.scoring
 
-import com.relatedsciences.opentargets.pipeline.schema.Fields.FieldName
-import com.relatedsciences.opentargets.pipeline.schema.{DataSource, DataType}
-import com.relatedsciences.opentargets.pipeline.scoring.Component.ComponentName
-import com.relatedsciences.opentargets.pipeline.{Record, Utilities}
+import com.relatedsciences.opentargets.etl.schema.Fields.FieldName
+import com.relatedsciences.opentargets.etl.schema.{DataSource, DataType}
+import com.relatedsciences.opentargets.etl.scoring.Component.ComponentName
+import com.relatedsciences.opentargets.etl.{Record, Utilities}
 import org.apache.spark.sql.Row
 
 object Scoring {

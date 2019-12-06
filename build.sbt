@@ -13,6 +13,7 @@ lazy val root = (project in file("."))
     ),
     libraryDependencies ++= loggingDeps,
     libraryDependencies ++= sparkDeps,
+    libraryDependencies ++= codeDeps,
     libraryDependencies ++= configDeps,
     libraryDependencies ++= testingDeps,
     assemblyJarName in assembly := { "ot-scoring.jar" },
