@@ -11,6 +11,9 @@ lazy val root = (project in file("."))
         scalaVersion := "2.12.8"
       )
     ),
+    resolvers ++= Seq(
+      "jitpack" at "https://jitpack.io"
+    ),
     libraryDependencies ++= loggingDeps,
     libraryDependencies ++= sparkDeps,
     libraryDependencies ++= codeDeps,

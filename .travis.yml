@@ -6,5 +6,5 @@ scala:
   - 2.12.8
 
 script:
-  - sbt ++$TRAVIS_SCALA_VERSION clean compile
+  - sbt ++$TRAVIS_SCALA_VERSION clean compile package
   - sbt ++$TRAVIS_SCALA_VERSION coverage test coverageReport

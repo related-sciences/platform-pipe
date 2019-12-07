@@ -58,7 +58,7 @@ class ComponentsSuite extends FunSuite with SparkSessionWrapper {
 
   test("invalid configuration for decorators") {
     assertThrows[NoSuchElementException]({
-      val config = TestUtils.getConfig("config/application-bad-decorator.conf")
+      val config = TestUtils.getConfig("/config/application-bad-decorator.conf")
       pipeline1(config).run(new PipelineState)
     })
   }

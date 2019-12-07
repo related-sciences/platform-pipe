@@ -19,7 +19,7 @@ class ScoringPreparationPipeline(ss: SparkSession, config: Config)
   def getRawEvidence: DataFrame = {
     val resourceDataFields = Fields.allColumns.toList
     ss.read
-      .json(Paths.get(config.inputDir).resolve(config.pipeline.scoring.evidenceFileName).toString)
+      .json(config.evidenceExtractPath)
       .select(
         $"target.id".as("target_id"),
         $"private.efo_codes".as("efo_codes"),

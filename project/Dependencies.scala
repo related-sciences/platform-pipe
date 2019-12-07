@@ -13,8 +13,9 @@ object Dependencies {
   )
 
   lazy val codeDeps = Seq(
-    "com.beachape"     %% "enumeratum" % "1.5.13",
-    "com.github.scopt" %% "scopt"      % "3.7.1"
+    "com.beachape"                      %% "enumeratum"            % "1.5.13",
+    "com.github.scopt"                  %% "scopt"                 % "3.7.1",
+    "com.github.everit-org.json-schema" % "org.everit.json.schema" % "1.12.0"
   )
 
   lazy val testingDeps = Seq(

@@ -12,7 +12,8 @@ object Test {
   def main(args: Array[String]): Unit = {
 //    val p = Paths.get("/Volumes/rs1-eczech/repos/rs/ot-scoring/src/main/resources/application.conf")
 //    val config = ConfigSource.file(p).load[Configuration.Config]
-    val config = ConfigSource.resources("application.conf").load[Configuration.Config]
-    println(config)
+//    val config = ConfigSource.resources("application.conf").load[Configuration.Config]
+//    println(config)
+    println(Command.CommandEnum.RunScoringPipeline.entryName)
   }
 }

@@ -1,23 +1,28 @@
 package com.relatedsciences.opentargets.etl.pipeline
 
-import com.relatedsciences.opentargets.etl.pipeline.Components.State
+import com.relatedsciences.opentargets.etl.pipeline.Components.{State, Time, Summary}
 import com.typesafe.scalalogging.LazyLogging
 
 import scala.collection.mutable.ListBuffer
 import scala.concurrent.duration.Duration
 
 class PipelineState extends State with LazyLogging {
-  case class Time(name: String, duration: Duration)
-  var times = new ListBuffer[Time]()
+  private var timesL     = new ListBuffer[Time]()
+  private var summariesL = new ListBuffer[Summary]()
 
-  case class Summary(name: String, count: Long, schema: String)
-  var summaries = new ListBuffer[Summary]
+  override def times: List[Time] = {
+    timesL.toList
+  }
+
+  override def summaries: List[Summary] = {
+    summariesL.toList
+  }
 
   override def addTime(name: String, duration: Duration): Unit = {
-    times += Time(name, duration)
+    timesL += Time(name, duration)
   }
 
   override def addSummary(name: String, count: Long, schema: String): Unit = {
-    summaries += Summary(name, count, schema)
+    summariesL += Summary(name, count, schema)
   }
 }

@@ -30,6 +30,14 @@ object Configuration {
     lazy val associationScorePath: String =
       Paths.get(outputDir).resolve("score_association.parquet").toString
 
+    // Paths that will change in the near future:
+    lazy val rawEvidencePath
+        : String = // This is a stop-gap destination for downloaded public GS files
+      Paths.get(inputDir).resolve("evidence.parquet").toString
+    lazy val evidenceExtractPath
+        : String = // This contains extracts from ES that should ultimately be in pipeline
+      Paths.get(inputDir).resolve(pipeline.scoring.evidenceFileName).toString
+
   }
 
 }

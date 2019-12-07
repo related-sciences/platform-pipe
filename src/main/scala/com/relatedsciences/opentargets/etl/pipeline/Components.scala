@@ -6,16 +6,6 @@ import scala.concurrent.duration.Duration
 
 object Components extends LazyLogging {
 
-  trait State {
-    def addTime(name: String, time: Duration)
-    def addSummary(name: String, count: Long, schema: String)
-  }
-  type S    = State
-  type Spec = Pipeline[Unit]
-  trait SpecProvider {
-    def spec(): Spec
-  }
-
   abstract class Operation[A] {
     val scope: Seq[String]
     def run: S => A
@@ -37,6 +27,21 @@ object Components extends LazyLogging {
         def run: (S) => A      = (_) => f()
       }
     }
+  }
+
+  case class Time(name: String, duration: Duration)
+  case class Summary(name: String, count: Long, schema: String)
+  trait State {
+    def times: List[Time]
+    def summaries: List[Summary]
+    def addTime(name: String, time: Duration)
+    def addSummary(name: String, count: Long, schema: String)
+  }
+
+  type S    = State
+  type Spec = Pipeline[Unit]
+  trait SpecProvider {
+    def spec(): Spec
   }
 
 }

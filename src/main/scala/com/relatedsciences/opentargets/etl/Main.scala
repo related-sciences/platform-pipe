@@ -10,12 +10,11 @@ package com.relatedsciences.opentargets.etl
 import java.nio.file.Paths
 
 import com.relatedsciences.opentargets.etl.configuration.Configuration.Config
-import org.apache.spark.sql.SparkSession
 import com.typesafe.scalalogging.LazyLogging
+import org.apache.spark.sql.SparkSession
+import pureconfig._
 import pureconfig.error.ConfigReaderFailures
 import scopt.OptionParser
-import pureconfig.generic.auto._
-import pureconfig._
 
 object Main extends LazyLogging {
   val progName: String = "ot-platform-pipe"
@@ -32,21 +31,6 @@ object Main extends LazyLogging {
       |
     """.stripMargin
 
-  case class Args(config: String = "", command: Option[String] = None)
-
-  def run(args: Args, config: Config)(implicit ss: SparkSession): Unit = {
-    println(s"running $progName")
-
-    logger.debug(s"running with cli args $args and with configuration $config")
-
-    // TODO: check command set
-    val cmd = Command.CommandEnum.withName(args.command.get)
-    logger.info(s"Running command $cmd")
-    cmd.enumEntry.factory(ss, config).run()
-
-    println("closing app... done.")
-  }
-
   private def getSparkSession(config: Config) = {
     SparkSession.builder
       .appName(progName)
@@ -54,7 +38,7 @@ object Main extends LazyLogging {
       .getOrCreate()
   }
 
-  def loadConfig(file: String): Either[ConfigReaderFailures, Config] = { //implicit reader used to read the config file
+  private def getConfig(file: String): Either[ConfigReaderFailures, Config] = { //implicit reader used to read the config file
     val conf = if (file.nonEmpty) {
       logger.info(s"loading configuration from commandline as $file")
       ConfigSource.file(Paths.get(file)).load[Config]
@@ -65,11 +49,46 @@ object Main extends LazyLogging {
     conf
   }
 
+  val parser: OptionParser[Args] = {
+    new OptionParser[Args](progName) {
+      head(progName)
+
+      opt[String]("config")
+        .abbr("c")
+        .valueName("<config-file>")
+        .action((x, c) => c.copy(config = x))
+        .text(
+          "Path to application configuration file.  " +
+            "This can be any valid HOCON file, typically with .conf suffix (see https://github.com/lightbend/config)"
+        )
+
+      Command.CommandEnum.values.foreach(
+        command =>
+          cmd(command.entryName)
+            .action((_, c) => c.copy(command = Some(command.entryName)))
+            .text(command.enumEntry.opts.text)
+      )
+
+      //      opt[Map[String, String]]("kwargs")
+      //        .valueName("k1=v1,k2=v2...")
+      //        .action((x, c) => c.copy(kwargs = x))
+      //        .text("other arguments")
+      //
+      //      cmd("distance-nearest")
+      //        .action((_, c) => c.copy(command = Some("distance-nearest")))
+      //        .text("generate distance nearest based dataset")
+
+      note(entryText)
+
+      override def showUsageOnError = true
+    }
+  }
+
   def main(args: Array[String]): Unit = {
     // parser.parse returns Option[C]
     parser.parse(args, Args()) match {
       case Some(args) =>
-        loadConfig(args.config) match {
+        getConfig(args.config) match {
           case Right(config) => {
             implicit val ss: SparkSession = getSparkSession(config)
             ss.sparkContext.setLogLevel(config.logLevel)
@@ -87,39 +106,24 @@ object Main extends LazyLogging {
     }
   }
 
-  val parser: OptionParser[Args] =
-    new OptionParser[Args](progName) {
-      head(progName)
+  case class Args(config: String = "", command: Option[String] = None)
 
-      opt[String]("config")
-        .abbr("c")
-        .valueName("<config-file>")
-        .action((x, c) => c.copy(config = x))
-        .text("file contains the configuration needed to run the pipeline")
+  def run(args: Args, config: Config)(implicit ss: SparkSession): Unit = {
+    // Log to stdout (very sparingly) in the event of logging configuration failures
+    println(s"Running $progName with args=$args")
+    logger.info(s"Running $progName with args=$args")
+    logger.debug(s"Configuration to be used for processing=$config")
 
-      Command.CommandEnum.values.foreach(
-        command =>
-          cmd(command.entryName)
-            .action((_, c) => c.copy(command = Some(command.entryName)))
-            .text("some command")
-      )
-      opt[String]("config")
-        .abbr("c")
-        .valueName("<config-file>")
-        .action((x, c) => c.copy(config = x))
-        .text("file contains the configuration needed to run the pipeline")
-
-//      opt[Map[String, String]]("kwargs")
-//        .valueName("k1=v1,k2=v2...")
-//        .action((x, c) => c.copy(kwargs = x))
-//        .text("other arguments")
-//
-//      cmd("distance-nearest")
-//        .action((_, c) => c.copy(command = Some("distance-nearest")))
-//        .text("generate distance nearest based dataset")
-
-      note(entryText)
-
-      override def showUsageOnError = true
+    args.command match {
+      case Some(commandName) => {
+        val cmd = Command.CommandEnum.withName(commandName)
+        logger.info(s"Running command $cmd")
+        cmd.enumEntry.factory(ss, config).run()
+      }
+      case _ => logger.error("Failed to specify a command to run (try --help)")
     }
+
+    println("Application complete")
+  }
+
 }
