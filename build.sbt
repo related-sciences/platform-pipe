@@ -19,6 +19,7 @@ lazy val root = (project in file("."))
     libraryDependencies ++= codeDeps,
     libraryDependencies ++= configDeps,
     libraryDependencies ++= testingDeps,
+
     assemblyJarName in assembly := { "ot-scoring.jar" },
     assemblyMergeStrategy in assembly := {
       case PathList("org", "aopalliance", xs @ _*)      => MergeStrategy.last
@@ -47,3 +48,9 @@ lazy val root = (project in file("."))
       }
     }
   )
+
+/** NOTE: With multiple JDKs installed on a system, it becomes crucial that sbt chooses a 1.8 JDK install.
+  * On mac, this can be ensured with export JAVA_HOME=`/usr/libexec/java_home -v 1.8`.
+  * sbt may choose an appropriate JDK based on other build properties, but I've found
+  * it doesn't always do that so the explicit JAVA_HOME setting becomes necessary prior to any sbt commands
+  * (though it is not an issue with IntelliJ if sbt is configured there to use a specific JDK). */

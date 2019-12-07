@@ -1,6 +1,10 @@
 package com.relatedsciences.opentargets.etl
+import java.net.{URI, URL}
+
 import scala.concurrent.duration.{Duration, NANOSECONDS}
 import scala.io.Source
+import org.yaml.snakeyaml.Yaml
+import java.util.{Map => JMap}
 
 object Utilities {
 
@@ -63,6 +67,19 @@ object Utilities {
 
   object Stopwatch {
     def start(): Stopwatch = new Stopwatch
+  }
+
+  def loadYaml(path: String): JMap[String, Any] = {
+    loadYaml(Source.fromFile(path))
+  }
+
+  def loadYaml(url: URL): JMap[String, Any] = {
+    loadYaml(Source.fromFile(url.toURI))
+  }
+
+  def loadYaml(source: Source): JMap[String, Any] = {
+    val content = Utilities.using(source)(f => f.mkString)
+    (new Yaml).load(content).asInstanceOf[JMap[String, Any]]
   }
 
 }
