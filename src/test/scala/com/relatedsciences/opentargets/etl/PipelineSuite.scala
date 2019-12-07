@@ -52,21 +52,21 @@ class PipelineSuite extends FunSuite with SparkSessionWrapper with DataFrameComp
     )
   }
 
-//  test("pipeline aggregations are valid for select targets") {
-//    //val config = TestUtils.getPipelineConfig()
-//    val config = TestUtils.primaryTestConfig
-//
-//    // Read in the raw evidence data exported for a few select targets and
-//    // run the full scoring pipeline on it
-//    logger.info(s"Beginning full pipeline test")
-//    Command.CommandEnum.RunScoringPipeline.factory(ss, config)
-//
-//    // Check that aggregations to different levels are equivalent to verified values (from OT)
-//    logger.info(s"Checking association scores")
-//    checkAssocationScores(config)
-//
-//    logger.info(s"Checking source scores")
-//    checkSourceScores(config)
-//  }
+  test("pipeline aggregations are valid for select targets") {
+    val config = TestUtils.primaryTestConfig
+
+    // Read in the raw evidence data exported for a few select targets and
+    // run the full scoring pipeline on it
+    logger.info(s"Beginning full pipeline test")
+    Command.CommandEnum.PrepareScores.factory(ss, config).run()
+    Command.CommandEnum.CalculateScores.factory(ss, config).run()
+
+    // Check that aggregations to different levels are equivalent to verified values (from OT)
+    logger.info(s"Checking association scores")
+    checkAssocationScores(config)
+
+    logger.info(s"Checking source scores")
+    checkSourceScores(config)
+  }
 
 }

@@ -37,6 +37,8 @@ abstract class PipelineCommand(ss: SparkSession, config: Config)
       s"Pipeline complete; Summary:\n" +
         s"\ttimes: ${state.times}"
     )
+    // TODO: make this configurable?
+    logger.info(s"Pipeline data structure summaries:\n${state.summaries}")
   }
 }
 
@@ -69,23 +71,6 @@ object Command {
             }
         )
 
-    case object DownloadEvidence
-      extends CommandEnum(
-        CLIOpts(
-          """Download evidence files from GS
-            |NOTE: This is not the recommended way to source these files in production but it is useful for testing
-            |""".stripMargin),
-        (ss, c) =>
-          new Command(ss, c) {
-            def run(): Unit = {
-              import scala.collection.JavaConverters.iterableAsScalaIterable
-              // See here for yaml parsing example: https://github.com/related-sciences/ot-scoring/blob/4fd9520623d8bab8d4cff9b353b06144c06ef43d/src/main/scala/com/relatedsciences/opentargets/pipeline/Configuration.scala#L29
-              val config = Utilities.loadYaml(c.externalConfig.mrtargetData)
-              val urls = iterableAsScalaIterable(config.get("input-file").asInstanceOf[JList[String]])
-              // TODO: Download each file while respecting argument to potentially limit size
-            }
-          }
-      )
   }
 
 }
