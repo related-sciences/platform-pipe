@@ -13,6 +13,7 @@ import com.relatedsciences.opentargets.etl.configuration.Configuration.Config
 import com.typesafe.scalalogging.LazyLogging
 import org.apache.spark.sql.SparkSession
 import pureconfig._
+import pureconfig.generic.auto._
 import pureconfig.error.ConfigReaderFailures
 import scopt.OptionParser
 
@@ -38,15 +39,14 @@ object Main extends LazyLogging {
       .getOrCreate()
   }
 
-  private def getConfig(file: String): Either[ConfigReaderFailures, Config] = { //implicit reader used to read the config file
-    val conf = if (file.nonEmpty) {
-      logger.info(s"loading configuration from commandline as $file")
-      ConfigSource.file(Paths.get(file)).load[Config]
+  private def getConfig(path: String): Config = { //implicit reader used to read the config file
+    if (path.nonEmpty) {
+      logger.info(s"Loading configuration from path '$path'")
+      ConfigSource.file(Paths.get(path)).loadOrThrow[Config]
     } else {
-      logger.info("load configuration from package resource")
-      ConfigSource.default.load[Config]
+      logger.info("Loading configuration from packaged application (path not provided)")
+      ConfigSource.default.loadOrThrow[Config]
     }
-    conf
   }
 
   val parser: OptionParser[Args] = {
@@ -85,24 +85,19 @@ object Main extends LazyLogging {
   }
 
   def main(args: Array[String]): Unit = {
-    // parser.parse returns Option[C]
     parser.parse(args, Args()) match {
-      case Some(args) =>
-        getConfig(args.config) match {
-          case Right(config) => {
-            implicit val ss: SparkSession = getSparkSession(config)
-            ss.sparkContext.setLogLevel(config.logLevel)
-            try {
-              run(args, config)
-            } finally {
-              ss.close()
-            }
-          }
-          case Left(failures) =>
-            println(s"configuration contains errors like ${failures.toString}")
+      case Some(args) => {
+        val config = getConfig(args.config)
+        implicit val ss: SparkSession = getSparkSession(config)
+        ss.sparkContext.setLogLevel(config.logLevel)
+        try {
+          run(args, config)
+        } finally {
+          ss.close()
         }
-
-      case None => println("problem parsing commandline args")
+      }
+      case None => throw new IllegalArgumentException(
+        "Failed to parse command line arguments")
     }
   }
 

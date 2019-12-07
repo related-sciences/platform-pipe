@@ -14,6 +14,5 @@ object Test {
 //    val config = ConfigSource.file(p).load[Configuration.Config]
 //    val config = ConfigSource.resources("application.conf").load[Configuration.Config]
 //    println(config)
-    println(Command.CommandEnum.RunScoringPipeline.entryName)
   }
 }
