@@ -8,3 +8,6 @@ scala:
 script:
   - sbt ++$TRAVIS_SCALA_VERSION clean compile package
   - sbt ++$TRAVIS_SCALA_VERSION coverage test coverageReport
+
+after_success:
+  - bash <(curl -s https://codecov.io/bash) -t 16bff17d-e97d-4333-b885-fbaca75188c4
