@@ -15,6 +15,10 @@ class Pipeline[A](spec: Operation[A], config: Config) {
   }
 }
 
+/**
+* Pipeline model for functor composition, with application specific context such as configuration
+  * and spark session, allowing for injection of helpful logic between steps in a sequence
+  */
 object Pipeline extends LazyLogging {
 
   class Builder(config: Config) {
@@ -76,4 +80,8 @@ object Pipeline extends LazyLogging {
     def apply(config: Config) = new Builder(config)
   }
 
+  type Spec = Pipeline[Unit]
+  trait SpecProvider {
+    def spec(): Spec
+  }
 }

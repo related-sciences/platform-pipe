@@ -2,25 +2,13 @@ package com.relatedsciences.opentargets.etl.pipeline
 
 import com.relatedsciences.opentargets.etl.Record
 import com.relatedsciences.opentargets.etl.configuration.Configuration.Config
-import com.relatedsciences.opentargets.etl.pipeline.Components.Spec
+import com.relatedsciences.opentargets.etl.pipeline.Pipeline.Spec
 import com.relatedsciences.opentargets.etl.scoring.{Parameters, Score, Scoring}
 import com.relatedsciences.opentargets.etl.scoring.Scoring.UnsupportedDataTypeException
 import com.typesafe.scalalogging.LazyLogging
 import org.apache.spark.sql.{DataFrame, Row, SparkSession}
 import org.apache.spark.sql.expressions.Window
-import org.apache.spark.sql.functions.{
-  coalesce,
-  collect_set,
-  explode,
-  lit,
-  max,
-  pow,
-  row_number,
-  sum,
-  typedLit,
-  udf,
-  when
-}
+import org.apache.spark.sql.functions.{coalesce, collect_set, explode, lit, max, pow, row_number, sum, typedLit, udf, when}
 
 class ScoringCalculationPipeline(ss: SparkSession, config: Config)
     extends SparkPipeline(ss, config)

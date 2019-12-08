@@ -22,10 +22,13 @@ object Configuration {
       inputDir: String,
       outputDir: String,
       logLevel: String,
+      evidenceJsonSchema: String,
       externalConfig: ExternalConfig,
       pipeline: Pipeline
   ) {
 
+    lazy val evidenceValidationSummaryPath: String =
+      Paths.get(outputDir).resolve("evidence_validation_summary.parquet").toString
     lazy val preparedEvidencePath: String =
       Paths.get(outputDir).resolve("evidence.parquet").toString
     lazy val evidenceScorePath: String =

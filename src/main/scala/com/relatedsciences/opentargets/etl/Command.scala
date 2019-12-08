@@ -1,16 +1,14 @@
 package com.relatedsciences.opentargets.etl
 import com.relatedsciences.opentargets.etl.configuration.Configuration.Config
-import com.relatedsciences.opentargets.etl.pipeline.Components.{Spec, SpecProvider, State}
-import com.relatedsciences.opentargets.etl.pipeline.{
-  PipelineState,
-  ScoringCalculationPipeline,
-  ScoringPreparationPipeline
-}
+import com.relatedsciences.opentargets.etl.pipeline.Components.State
+import com.relatedsciences.opentargets.etl.pipeline.{PipelineState, ScoringCalculationPipeline, ScoringPreparationPipeline}
 import com.typesafe.scalalogging.LazyLogging
 import enumeratum._
 import enumeratum.EnumEntry._
 import org.apache.spark.sql.SparkSession
 import java.util.{List => JList}
+
+import com.relatedsciences.opentargets.etl.pipeline.Pipeline.{Spec, SpecProvider}
 
 import scala.collection.immutable
 

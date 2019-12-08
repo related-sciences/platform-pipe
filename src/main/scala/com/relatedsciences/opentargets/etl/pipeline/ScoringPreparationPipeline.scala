@@ -2,7 +2,7 @@ package com.relatedsciences.opentargets.etl.pipeline
 import java.nio.file.Paths
 
 import com.relatedsciences.opentargets.etl.configuration.Configuration.Config
-import com.relatedsciences.opentargets.etl.pipeline.Components.Spec
+import com.relatedsciences.opentargets.etl.pipeline.Pipeline.Spec
 import com.relatedsciences.opentargets.etl.schema.Fields
 import com.typesafe.scalalogging.LazyLogging
 import org.apache.spark.sql.{DataFrame, SparkSession}
