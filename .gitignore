@@ -29,3 +29,6 @@ bin/
 *.ipr
 *.iws
 .idea
+
+# Test data
+src/test/resources/pipeline_test/output/

@@ -1,25 +1,33 @@
 package com.relatedsciences.opentargets.etl
 import com.relatedsciences.opentargets.etl.configuration.Configuration.Config
-import com.relatedsciences.opentargets.etl.pipeline.Components.{Spec, SpecProvider, State}
-import com.relatedsciences.opentargets.etl.pipeline.{
-  PipelineState,
-  ScoringCalculationPipeline,
-  ScoringPreparationPipeline,
-  SparkPipeline
-}
+import com.relatedsciences.opentargets.etl.pipeline.Components.State
+import com.relatedsciences.opentargets.etl.pipeline.{PipelineState, ScoringCalculationPipeline, ScoringPreparationPipeline}
 import com.typesafe.scalalogging.LazyLogging
 import enumeratum._
 import enumeratum.EnumEntry._
 import org.apache.spark.sql.SparkSession
+import java.util.{List => JList}
+
+import com.relatedsciences.opentargets.etl.pipeline.Pipeline.{Spec, SpecProvider}
 
 import scala.collection.immutable
 
 abstract class Command(ss: SparkSession, config: Config) extends LazyLogging {
-  def run(state: State): State
+  def run(): Unit
+}
 
-  def run(): Unit = {
+abstract class PipelineCommand(ss: SparkSession, config: Config)
+    extends Command(ss, config)
+    with SpecProvider {
+
+  override def run(): Unit = {
     val state = run(new PipelineState)
     summarize(state)
+  }
+
+  def run(state: State): State = {
+    spec().run(state)
+    state
   }
 
   def summarize(state: State): Unit = {
@@ -27,15 +35,8 @@ abstract class Command(ss: SparkSession, config: Config) extends LazyLogging {
       s"Pipeline complete; Summary:\n" +
         s"\ttimes: ${state.times}"
     )
-  }
-}
-
-abstract class PipelineCommand(ss: SparkSession, config: Config)
-    extends Command(ss, config)
-    with SpecProvider {
-  override def run(state: State): State = {
-    spec().run(state)
-    state
+    // TODO: make this configurable?
+    logger.info(s"Pipeline data structure summaries:\n${state.summaries}")
   }
 }
 
@@ -67,6 +68,7 @@ object Command {
               override def spec(): Spec = new ScoringCalculationPipeline(ss, c).spec()
             }
         )
+
   }
 
 }

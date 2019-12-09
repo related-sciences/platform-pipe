@@ -1,7 +1,7 @@
 package com.relatedsciences.opentargets.etl.pipeline
 
 import com.relatedsciences.opentargets.etl.configuration.Configuration.Config
-import com.relatedsciences.opentargets.etl.pipeline.Components.SpecProvider
+import com.relatedsciences.opentargets.etl.pipeline.Pipeline.SpecProvider
 import com.typesafe.scalalogging.LazyLogging
 import org.apache.spark.sql.{DataFrame, DataFrameWriter, Row, SparkSession}
 

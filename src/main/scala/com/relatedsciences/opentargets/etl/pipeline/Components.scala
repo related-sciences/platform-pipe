@@ -31,17 +31,16 @@ object Components extends LazyLogging {
 
   case class Time(name: String, duration: Duration)
   case class Summary(name: String, count: Long, schema: String)
+  case class Reference(name: String, value: Any)
   trait State {
     def times: List[Time]
     def summaries: List[Summary]
+    def references: List[Reference]
     def addTime(name: String, time: Duration)
     def addSummary(name: String, count: Long, schema: String)
+    def addReference(name: String, value: Any)
   }
 
   type S    = State
-  type Spec = Pipeline[Unit]
-  trait SpecProvider {
-    def spec(): Spec
-  }
 
 }
