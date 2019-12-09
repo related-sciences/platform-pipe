@@ -21,14 +21,24 @@ object Configuration {
       sparkUri: String,
       inputDir: String,
       outputDir: String,
+      resourceDir: String,
       logLevel: String,
       evidenceJsonSchema: String,
       externalConfig: ExternalConfig,
       pipeline: Pipeline
   ) {
 
+    // Evidence prep paths
     lazy val evidenceValidationSummaryPath: String =
-      Paths.get(outputDir).resolve("evidence_validation_summary.parquet").toString
+      Paths.get(outputDir).resolve("evidence_schema_validation_summary.parquet").toString
+    lazy val evidenceValidationErrorsPath: String =
+      Paths.get(outputDir).resolve("evidence_schema_validation_errors.parquet").toString
+
+    // Entity data paths
+    lazy val geneDataPath: String = Paths.get(inputDir).resolve("gene.json").toString
+    lazy val nonRefGeneDataPath: String = Paths.get(resourceDir).resolve("genes_with_non_reference_ensembl_ids_lkp.tsv").toString
+
+    // Post evidence-prep
     lazy val preparedEvidencePath: String =
       Paths.get(outputDir).resolve("evidence.parquet").toString
     lazy val evidenceScorePath: String =
