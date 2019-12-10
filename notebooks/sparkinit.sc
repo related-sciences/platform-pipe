@@ -6,6 +6,9 @@ Logger.getLogger("org").setLevel(Level.WARN)
 val ss = {
   NotebookSparkSession
     .builder()
+    .config("spark.sql.shuffle.partitions", "1")
+    .config("spark.ui.enabled", "false")
+    .config("spark.driver.host", "localhost")
     .master("local[*]")
     .getOrCreate()
 }
