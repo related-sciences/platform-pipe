@@ -1,8 +1,5 @@
 import java.nio.file.Paths
-val jar = java.nio.file.FileSystems
+import $file.pathinit, pathinit._
+interp.load.cp(ammonite.ops.Path(java.nio.file.FileSystems
   .getDefault()
-  .getPath(
-    Paths.get(System.getProperty("user.home"), "data", "ot", "apps", "ot-scoring.jar").toString
-  )
-val path = ammonite.ops.Path(jar)
-interp.load.cp(path)
+  .getPath(PROJECT_JAR_PATH.toString)))

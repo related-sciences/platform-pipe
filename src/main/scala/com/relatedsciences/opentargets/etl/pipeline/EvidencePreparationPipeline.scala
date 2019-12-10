@@ -65,7 +65,7 @@ class URIFormatValidator extends FormatValidator {
 
 }
 
-case class UniProtGeneLookup(ensemble_gene_id: String, uniprot_id: String)
+case class UniProtGeneLookup(ensembl_gene_id: String, uniprot_id: String)
 case class NonReferenceGeneLookup(reference: String, alternate: String)
 
 object RecordValidator {
@@ -129,6 +129,7 @@ class EvidenceValidationPipeline(ss: SparkSession, config: Config)
     extends SparkPipeline(ss, config)
     with LazyLogging {
   import ss.implicits._
+  import com.relatedsciences.opentargets.etl.pipeline.SparkImplicits._
 
   val UNI_ID_ORG_PREFIX = "http://identifiers.org/uniprot/"
   val ENS_ID_ORG_PREFIX = "http://identifiers.org/ensembl/"
@@ -173,6 +174,7 @@ class EvidenceValidationPipeline(ss: SparkSession, config: Config)
       .select($"ensembl_gene_id", explode_outer(
         concat(array($"uniprot_id"), $"uniprot_accessions")
       ).as("uniprot_id"))
+      // Convert empty to null to avoid ambiguity post-downstream-join
       .withColumn("uniprot_id", when(trim($"uniprot_id") =!= "", $"uniprot_id").otherwise(lit(null: String)))
       .dropDuplicates()
       .as[UniProtGeneLookup]
@@ -189,20 +191,50 @@ class EvidenceValidationPipeline(ss: SparkSession, config: Config)
       .csv(config.nonRefGeneDataPath).as[NonReferenceGeneLookup]
   }
 
-  def runEvidenceIdentifierNormalization(df: DataFrame): DataFrame = {
-    val dfu = getUniProtGeneLookup
-    val dfn = getNonReferenceGeneLookup.cache()
+  def normalizeTargetIds(df: DataFrame): DataFrame = {
+    val dfu = getUniProtGeneLookup.toDF().addPrefix("uniprot:")
+    val dfn = getNonReferenceGeneLookup.toDF().addPrefix("nonref:").cache()
+
     val dfr = df
       // See https://github.com/opentargets/data_pipeline/blob/329ff219f9510d137c7609478b05d358c9195579/mrtarget/common/EvidenceString.py#L275
-      .withColumn("target_id", element_at(split($"target.id", "/"), -1))
+      .withStructColumn("target", "id", element_at(split($"target.id", "/"), -1))
+      .withStructColumn("disease", "id", element_at(split($"disease.id", "/"), -1))
+      // Determine which type of identifier is used based on prefix
       .withColumn("target_id_type",
-        when($"target_id".startsWith(ENS_ID_ORG_PREFIX), "ensembl")
-          .when($"target_id".startsWith(UNI_ID_ORG_PREFIX), "uniprot")
+        when($"target.id".startsWith(ENS_ID_ORG_PREFIX), "ensembl")
+          .when($"target.id".startsWith(UNI_ID_ORG_PREFIX), "uniprot")
           .otherwise("other")
       )
-      .withColumn("disease_id", element_at(split($"disease.id", "/"), -1))
-    // TODO: WIP
-    dfr
+
+    // Resolve UniProt target identifiers
+    val dfru = dfr
+      // Join all target ids to UniProt ids (most will not match)
+      .join(dfu, dfr("target.id") === dfu("uniprot:uniprot_id"), "left")
+      // Replace the target id with whatever value it matched to for UniProt ids only (it may be null)
+      .withStructColumn(
+        "target", "id",
+        when($"target_id_type" === "uniprot", "uniprot:ensembl_gene_id")
+          .otherwise($"target.id")
+      )
+      .pipe(df => df.drop(df.columns.filter(_.startsWith("uniprot:")):_*))
+
+    // Resolve "non-reference" target identifiers
+    val dff = dfru
+      // Join to reference/alternate genes on the alternate id
+      .join(dfn, dfru("target.id") === dfn("nonref:alternate"), "left")
+      // Use the "reference" id for a matched alternate id if possible, otherwise leave the id alone
+      .withStructColumn(
+        "target", "id",
+        when($"nonref:reference".isNotNull, "nonref:reference")
+          .otherwise($"target.id")
+      )
+      .pipe(df => df.drop(df.columns.filter(_.startsWith("nonref:")):_*))
+
+    dff
+  }
+
+  def validateTargetIds(df: DataFrame): DataFrame = {
+    df
   }
 
   override def spec(): Spec = {
@@ -215,7 +247,8 @@ class EvidenceValidationPipeline(ss: SparkSession, config: Config)
       .start("getEvidenceRawData", () => ss.read.textFile(config.rawEvidencePath))
       .andThen("runEvidenceSchemaValidation", runEvidenceSchemaValidation)
       .andThen("parseEvidenceData", parseEvidenceData)
-      .andThen("runEvidenceIdentifierNormalization", runEvidenceIdentifierNormalization)
+      .andThen("normalizeTargetIds", normalizeTargetIds)
+      .andThen("validateTargetIds", validateTargetIds)
       .end("end")
   }
 }

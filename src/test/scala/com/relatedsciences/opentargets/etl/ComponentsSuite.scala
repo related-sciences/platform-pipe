@@ -1,5 +1,5 @@
 package com.relatedsciences.opentargets.etl
-import com.relatedsciences.opentargets.etl.configuration.Configuration.Config
+import com.relatedsciences.opentargets.etl.configuration.Configuration.{Config, PipelineDecoratorConfig}
 import com.relatedsciences.opentargets.etl.pipeline.{Pipeline, PipelineState}
 import org.scalatest.FunSuite
 
@@ -8,7 +8,14 @@ case class TestRecord(s: String, i: Int)
 class ComponentsSuite extends FunSuite with SparkSessionWrapper {
   import ss.implicits._
 
-  private def pipeline1(config: Config = TestUtils.primaryTestConfig) = {
+  def getConfig() = {
+    val config = TestUtils.primaryTestConfig
+    val decorators = config.pipeline.decorators + ("dataset-summary" -> PipelineDecoratorConfig(enabled=true))
+    val pipeline = config.pipeline.copy(decorators=decorators)
+    config.copy(pipeline=pipeline)
+  }
+
+  private def pipeline1(config: Config = getConfig()) = {
     Pipeline
       .Builder(config)
       .start("createValue", () => "2")
@@ -18,7 +25,7 @@ class ComponentsSuite extends FunSuite with SparkSessionWrapper {
       .stop("return", v => v)
   }
 
-  private def pipeline2(config: Config = TestUtils.primaryTestConfig, ct: Int) = {
+  private def pipeline2(config: Config = getConfig(), ct: Int) = {
     Pipeline
       .Builder(config)
       .start("createCount", () => ct)
@@ -58,8 +65,10 @@ class ComponentsSuite extends FunSuite with SparkSessionWrapper {
 
   test("invalid configuration for decorators") {
     assertThrows[NoSuchElementException]({
-      val config = TestUtils.getConfig("/config/application-bad-decorator.conf")
-      pipeline1(config).run(new PipelineState)
+      val config = getConfig()
+      val decorators = config.pipeline.decorators + ("some_invalid_decorator" -> PipelineDecoratorConfig(enabled=true))
+      val pipeline = config.pipeline.copy(decorators=decorators)
+      pipeline1(config.copy(pipeline=pipeline)).run(new PipelineState)
     })
   }
 

@@ -1,8 +1,6 @@
 package com.relatedsciences.opentargets.etl
 
-import java.time.format.{DateTimeFormatter, DateTimeFormatterBuilder}
-
-import com.relatedsciences.opentargets.etl.pipeline.{DateValidator, EvidenceValidationPipeline, PipelineState}
+import com.relatedsciences.opentargets.etl.pipeline.{EvidenceValidationPipeline, PipelineState}
 import org.apache.spark.sql.Dataset
 import org.scalatest.FunSuite
 

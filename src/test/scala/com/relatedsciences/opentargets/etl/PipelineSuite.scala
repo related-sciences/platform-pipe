@@ -9,7 +9,7 @@ import org.scalatest.FunSuite
 /**
 * Test for end-to-end pipeline validation
   *
-  * Expected results are computed by scripts/create_scoring_test_datasets.sc
+  * Expected results are computed by notebooks in notebooks/testing
   */
 class PipelineSuite extends FunSuite with SparkSessionWrapper with DataFrameComparison {
 
