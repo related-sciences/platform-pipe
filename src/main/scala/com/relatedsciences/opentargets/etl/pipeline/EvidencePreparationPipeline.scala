@@ -125,7 +125,7 @@ object RecordValidator {
   }
 }
 
-class EvidenceValidationPipeline(ss: SparkSession, config: Config)
+class EvidencePreparationPipeline(ss: SparkSession, config: Config)
     extends SparkPipeline(ss, config)
     with LazyLogging {
   import ss.implicits._
@@ -196,15 +196,18 @@ class EvidenceValidationPipeline(ss: SparkSession, config: Config)
     val dfn = getNonReferenceGeneLookup.toDF().addPrefix("nonref:").cache()
 
     val dfr = df
-      // See https://github.com/opentargets/data_pipeline/blob/329ff219f9510d137c7609478b05d358c9195579/mrtarget/common/EvidenceString.py#L275
-      .withStructColumn("target", "id", element_at(split($"target.id", "/"), -1))
-      .withStructColumn("disease", "id", element_at(split($"disease.id", "/"), -1))
       // Determine which type of identifier is used based on prefix
       .withColumn("target_id_type",
         when($"target.id".startsWith(ENS_ID_ORG_PREFIX), "ensembl")
           .when($"target.id".startsWith(UNI_ID_ORG_PREFIX), "uniprot")
           .otherwise("other")
       )
+      // Assume last URL component contains identifiers
+      // See https://github.com/opentargets/data_pipeline/blob/329ff219f9510d137c7609478b05d358c9195579/mrtarget/common/EvidenceString.py#L275
+      .withStructColumn("target", "id", element_at(split($"target.id", "/"), -1))
+      // TODO: This should be split out like get_ontology_code_from_url (https://github.com/opentargets/data_pipeline/blob/329ff219f9510d137c7609478b05d358c9195579/mrtarget/modules/Evidences.py#L201)
+      // TODO: Decide how to handle this check: https://github.com/opentargets/data_pipeline/blob/329ff219f9510d137c7609478b05d358c9195579/mrtarget/common/EvidenceString.py#L326
+      .withStructColumn("disease", "id", element_at(split($"disease.id", "/"), -1))
 
     // Resolve UniProt target identifiers
     val dfru = dfr
@@ -213,7 +216,7 @@ class EvidenceValidationPipeline(ss: SparkSession, config: Config)
       // Replace the target id with whatever value it matched to for UniProt ids only (it may be null)
       .withStructColumn(
         "target", "id",
-        when($"target_id_type" === "uniprot", "uniprot:ensembl_gene_id")
+        when($"target_id_type" === "uniprot", $"uniprot:ensembl_gene_id")
           .otherwise($"target.id")
       )
       .pipe(df => df.drop(df.columns.filter(_.startsWith("uniprot:")):_*))
@@ -225,7 +228,7 @@ class EvidenceValidationPipeline(ss: SparkSession, config: Config)
       // Use the "reference" id for a matched alternate id if possible, otherwise leave the id alone
       .withStructColumn(
         "target", "id",
-        when($"nonref:reference".isNotNull, "nonref:reference")
+        when($"nonref:reference".isNotNull, $"nonref:reference")
           .otherwise($"target.id")
       )
       .pipe(df => df.drop(df.columns.filter(_.startsWith("nonref:")):_*))
@@ -234,14 +237,14 @@ class EvidenceValidationPipeline(ss: SparkSession, config: Config)
   }
 
   def validateTargetIds(df: DataFrame): DataFrame = {
+    // TODO: Look for diseases and genes not indexes, log summaries of missing, remove bad records
+    // TODO: check all these: https://github.com/opentargets/data_pipeline/blob/329ff219f9510d137c7609478b05d358c9195579/mrtarget/common/EvidenceString.py#L334
     df
   }
 
   override def spec(): Spec = {
     // TODO: Add id hash to unparseable/invalid records? (https://github.com/opentargets/data_pipeline/blob/329ff219f9510d137c7609478b05d358c9195579/mrtarget/modules/Evidences.py#L132)
     // TODO: Validate data source against datasource_to_datatypes? (https://github.com/opentargets/data_pipeline/blob/329ff219f9510d137c7609478b05d358c9195579/mrtarget/modules/Evidences.py#L158)
-    // TODO: See how often "label" is used as "type" in failed records (https://github.com/opentargets/data_pipeline/blob/329ff219f9510d137c7609478b05d358c9195579/mrtarget/modules/Evidences.py#L135)
-    // TODO: Load non reference genes and include in target id validation
     Pipeline
       .Builder(config)
       .start("getEvidenceRawData", () => ss.read.textFile(config.rawEvidencePath))

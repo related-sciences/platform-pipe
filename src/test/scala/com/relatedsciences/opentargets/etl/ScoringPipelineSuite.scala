@@ -11,7 +11,7 @@ import org.scalatest.FunSuite
   *
   * Expected results are computed by notebooks in notebooks/testing
   */
-class PipelineSuite extends FunSuite with SparkSessionWrapper with DataFrameComparison {
+class ScoringPipelineSuite extends FunSuite with SparkSessionWrapper with DataFrameComparison {
 
   val logger: Logger = Logger.getLogger(getClass.getName)
 
@@ -61,7 +61,7 @@ class PipelineSuite extends FunSuite with SparkSessionWrapper with DataFrameComp
     )
   }
 
-  test("pipeline aggregations are valid for select targets") {
+  test("scoring pipeline aggregation results") {
     val config = TestUtils.primaryTestConfig
 
     // Read in the raw evidence data exported for a few select targets and
