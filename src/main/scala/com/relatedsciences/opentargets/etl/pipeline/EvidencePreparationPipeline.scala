@@ -194,13 +194,13 @@ class EvidenceValidationPipeline(ss: SparkSession, config: Config)
     val dfn = getNonReferenceGeneLookup.cache()
     val dfr = df
       // See https://github.com/opentargets/data_pipeline/blob/329ff219f9510d137c7609478b05d358c9195579/mrtarget/common/EvidenceString.py#L275
-      .withColumn("target_id", element_at(split(col("target.id"), "/"), -1))
+      .withColumn("target_id", element_at(split($"target.id", "/"), -1))
       .withColumn("target_id_type",
-        when(col("target_id").startsWith(ENS_ID_ORG_PREFIX), "ensembl")
-          .when(col("target_id").startsWith(UNI_ID_ORG_PREFIX), "uniprot")
+        when($"target_id".startsWith(ENS_ID_ORG_PREFIX), "ensembl")
+          .when($"target_id".startsWith(UNI_ID_ORG_PREFIX), "uniprot")
           .otherwise("other")
       )
-      .withColumn("disease_id", element_at(split(col("disease.id"), "/"), -1))
+      .withColumn("disease_id", element_at(split($"disease.id", "/"), -1))
     // TODO: WIP
     dfr
   }

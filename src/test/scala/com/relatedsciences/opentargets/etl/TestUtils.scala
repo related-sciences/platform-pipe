@@ -8,15 +8,20 @@ import pureconfig._
 
 object TestUtils {
 
-  def getConfig(path: String): Configuration.Config = {
+  val TEST_RESOURCE_DIR = Paths.get("src", "test", "resources")
+
+  def getConfigSource(path: String): ConfigObjectSource = {
     ConfigSource
       .resources(path)
       .recoverWith({ case _ => ConfigSource.resources(path.replaceFirst("/", "")) })
-      .loadOrThrow[Configuration.Config]
+  }
+
+  def getConfig(path: String = "/config/application.conf"): Configuration.Config = {
+    getConfigSource(path).loadOrThrow[Configuration.Config]
   }
 
   /** Note that this configuration will NOT come from src/test/resources with the ConfigSource.default loader */
-  lazy val primaryTestConfig: Configuration.Config = getConfig("/config/application.conf")
+  lazy val primaryTestConfig: Configuration.Config = getConfig()
 
   lazy val pipelineTestPath: Path =
     Paths.get(getClass.getResource("pipeline_test/README.md").getPath).getParent
