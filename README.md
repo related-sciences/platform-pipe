@@ -47,13 +47,36 @@ used to ignore that step if absolutely necessary.
 
 ### Execution
 
-To build a fat jar for standalone execution:
+To build a fat jar for execution (w/o Spark):
 
 ```
-# On the docker container (ot-client)
-cd ~/repos/ot-scoring
+cd ~/repos/rs/ot-scoring
 sbt "set test in assembly := {}" clean assembly
 ```
+
+To ship and run a script:
+
+```
+# on dev workstation
+rsync -P $HOME/repos/rs/ot-scoring/target/scala-2.12/ot-scoring.jar rs1:/data/disk1/ot/dev/apps/
+rsync -P $HOME/repos/rs/ot-scoring/scripts/* rs1:/data/disk1/ot/dev/apps/scripts/
+
+# Run script on ot-client container
+/usr/spark-2.4.4/bin/spark-shell --driver-memory 12g \
+--jars $HOME/data/ot/apps/ot-scoring.jar \
+-i $HOME/data/ot/apps/scripts/create_evidence_test_datasets.sc \
+--conf spark.ui.enabled=false --conf spark.sql.shuffle.partitions=1 \
+--conf spark.driver.args="\
+extractDir=$HOME/data/ot/extract,\
+testInputDir=$HOME/repos/ot-scoring/src/test/resources/pipeline_test/input,\
+testExpectedDir=$HOME/repos/ot-scoring/src/test/resources/pipeline_test/expected"
+
+# Run app on ot-client container (in local mode)
+/usr/spark-2.4.4/bin/spark-shell --driver-memory 12g \
+--conf spark.ui.enabled=false --conf spark.sql.shuffle.partitions=1 \
+$HOME/data/ot/apps/ot-scoring.jar [ARGS]
+```
+
 
 To build a local jar for execution via remote Spark installation:
 

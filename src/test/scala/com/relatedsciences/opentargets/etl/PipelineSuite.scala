@@ -6,6 +6,11 @@ import org.apache.log4j.Logger
 import org.apache.spark.sql.functions.col
 import org.scalatest.FunSuite
 
+/**
+* Test for end-to-end pipeline validation
+  *
+  * Expected results are computed by scripts/create_scoring_test_datasets.sc
+  */
 class PipelineSuite extends FunSuite with SparkSessionWrapper with DataFrameComparison {
 
   val logger: Logger = Logger.getLogger(getClass.getName)
@@ -35,7 +40,9 @@ class PipelineSuite extends FunSuite with SparkSessionWrapper with DataFrameComp
     checkScores(
       Seq("target_id", "disease_id", "score"),
       config.associationScorePath,
-      Paths.get(config.inputDir).resolve("association_scores.json").toString,
+      TestUtils.TEST_RESOURCE_DIR
+        .resolve(Paths.get("pipeline_test", "expected", "association_scores.json"))
+        .toString,
       "association"
     )
   }
@@ -47,7 +54,9 @@ class PipelineSuite extends FunSuite with SparkSessionWrapper with DataFrameComp
     checkScores(
       Seq("target_id", "disease_id", "source_id", "score"),
       config.sourceScorePath,
-      Paths.get(config.inputDir).resolve("source_scores.json").toString,
+      TestUtils.TEST_RESOURCE_DIR
+        .resolve(Paths.get("pipeline_test", "expected", "source_scores.json"))
+        .toString,
       "source"
     )
   }
