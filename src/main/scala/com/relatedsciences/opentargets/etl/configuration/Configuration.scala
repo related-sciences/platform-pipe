@@ -13,13 +13,17 @@ object Configuration {
   )
   case class PipelineEvidence(
       rawEvidenceDirName: String,
-      geneExtractDirName: String
+      geneExtractDirName: String,
+      efoExtractDirName: String
   )
   case class PipelineDecoratorConfig(enabled: Boolean)
   case class ExternalConfig(mrtargetData: URL, mrtargetEs: URL)
-  case class Pipeline(scoring: PipelineScoring,
-                      evidence: PipelineEvidence,
-                      decorators: Map[String, PipelineDecoratorConfig])
+  case class Pipeline(
+      scoring: PipelineScoring,
+      evidence: PipelineEvidence,
+      decorators: Map[String, PipelineDecoratorConfig],
+      enableAssertions: Boolean
+  )
   case class Config(
       sparkUri: String,
       inputDir: String,
@@ -32,14 +36,24 @@ object Configuration {
   ) {
 
     // Evidence prep paths
-    lazy val evidenceValidationSummaryPath: String =
-      Paths.get(outputDir).resolve("evidence_schema_validation_summary.parquet").toString
-    lazy val evidenceValidationErrorsPath: String =
-      Paths.get(outputDir).resolve("evidence_schema_validation_errors.parquet").toString
+    lazy val evidenceSchemaValidationSummaryPath: String =
+      Paths.get(outputDir).resolve("errors/evidence_schema_validation_summary.parquet").toString
+    lazy val evidenceSchemaValidationErrorsPath: String =
+      Paths.get(outputDir).resolve("errors/evidence_schema_validation_errors.parquet").toString
+    lazy val evidenceTargetIdValidationSummaryPath: String =
+      Paths.get(outputDir).resolve("errors/evidence_target_id_validation_summary.parquet").toString
+    lazy val evidenceTargetIdValidationErrorsPath: String =
+      Paths.get(outputDir).resolve("errors/evidence_target_id_validation_errors.parquet").toString
+    lazy val evidenceDiseaseIdValidationSummaryPath: String =
+      Paths.get(outputDir).resolve("errors/evidence_disease_id_validation_summary.parquet").toString
+    lazy val evidenceDiseaseIdValidationErrorsPath: String =
+      Paths.get(outputDir).resolve("errors/evidence_disease_id_validation_errors.parquet").toString
 
     // Entity data paths
     lazy val geneDataPath: String =
       Paths.get(inputDir).resolve(pipeline.evidence.geneExtractDirName).toString
+    lazy val efoDataPath: String =
+      Paths.get(inputDir).resolve(pipeline.evidence.efoExtractDirName).toString
     lazy val nonRefGeneDataPath: String =
       Paths.get(resourceDir).resolve("genes_with_non_reference_ensembl_ids_lkp.tsv").toString
 
@@ -54,10 +68,10 @@ object Configuration {
 
     // Paths that will change in the near future:
     lazy val rawEvidencePath
-      : String = // This is a stop-gap destination for downloaded public GS files
+        : String = // This is a stop-gap destination for downloaded public GS files
       Paths.get(inputDir).resolve(pipeline.evidence.rawEvidenceDirName).toString
     lazy val evidenceExtractPath
-      : String = // This contains extracts from ES that should ultimately be used in pipeline
+        : String = // This contains extracts from ES that should ultimately be used in pipeline
       Paths.get(inputDir).resolve(pipeline.scoring.evidenceExtractDirName).toString
 
   }

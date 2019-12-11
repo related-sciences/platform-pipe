@@ -1,7 +1,12 @@
 package com.relatedsciences.opentargets.etl
 import com.relatedsciences.opentargets.etl.configuration.Configuration.Config
 import com.relatedsciences.opentargets.etl.pipeline.Components.State
-import com.relatedsciences.opentargets.etl.pipeline.{PipelineState, ScoringCalculationPipeline, ScoringPreparationPipeline}
+import com.relatedsciences.opentargets.etl.pipeline.{
+  EvidencePreparationPipeline,
+  PipelineState,
+  ScoringCalculationPipeline,
+  ScoringPreparationPipeline
+}
 import com.typesafe.scalalogging.LazyLogging
 import enumeratum._
 import enumeratum.EnumEntry._
@@ -66,6 +71,14 @@ object Command {
           (ss, c) =>
             new PipelineCommand(ss, c) {
               override def spec(): Spec = new ScoringCalculationPipeline(ss, c).spec()
+            }
+        )
+    case object PrepareEvidence
+        extends CommandEnum(
+          CLIOpts("Execute evidence validation and normalization"),
+          (ss, c) =>
+            new PipelineCommand(ss, c) {
+              override def spec(): Spec = new EvidencePreparationPipeline(ss, c).spec()
             }
         )
 

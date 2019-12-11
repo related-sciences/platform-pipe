@@ -98,6 +98,28 @@ df.filter($"target.id".contains("uniprot") && $"target.id".contains("/")).select
 +-------------------------------------+
 ```
 
+### Disease IDs
+
+To better determine how different disease ids are sourced, this shows how the raw vaules are distributed:
+
+```$xslt
+val df = ss.read.json(Paths.get(EXTRACT_DIR.resolve("evidence_raw.json").toString))
+// Ids are urls like: http://www.orpha.net/ORDO/Orphanet_1572 
+df.withColumn("m", split($"disease.id", "/")).select(
+    $"m".getItem(2).as("domain"),
+    $"m".getItem(3).as("dir"),
+    $"m".getItem(4).as("id")
+).groupBy("domain", "dir").count().show
+
++-------------------+----+-------+
+|             domain| dir|  count|
++-------------------+----+-------+
+|      www.orpha.net|ORDO| 617976|
+|      www.ebi.ac.uk| efo|1050929|
+|purl.obolibrary.org| obo|  61662|
+|               null|null|      1|
++-------------------+----+-------+
+```
 
 ## Prepared Evidence
 

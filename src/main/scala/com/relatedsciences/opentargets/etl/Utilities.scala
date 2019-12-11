@@ -6,6 +6,10 @@ import scala.io.Source
 import org.yaml.snakeyaml.Yaml
 import java.util.{Map => JMap}
 
+import org.apache.spark.sql.{Column, Dataset, Encoder}
+import org.apache.spark.sql.functions.{col, struct}
+import org.apache.spark.sql.types.StructType
+
 object Utilities {
 
   /**
@@ -46,6 +50,12 @@ object Utilities {
     clip(r, newRng)
   }
 
+  /**
+    * Convert p value to score
+    * @param pValue p value (linear scale, not log)
+    * @param rng domain bounds on pValue
+    * @return score in [0, 1] with directionality inverted, i.e. a higher score corresponds to a lower p value
+    */
   def scorePValue(pValue: Double, rng: (Double, Double) = (1e-10, 1.0)): Double = {
     val pValueLog = Math.log10(pValue)
     val rngLog    = (Math.log10(rng._1), Math.log10(rng._2))
@@ -54,6 +64,43 @@ object Utilities {
     val pLinear = normalize(pValueLog, rngLog, (0.0, 1.0))
     assert(pLinear >= 0 && pLinear <= 1)
     1.0 - pLinear
+  }
+
+  /**
+    * Walk over the structure of a struct recursively, apply some function to all non-struct columns (which
+    * could be arrays or other containers)
+    *
+    * Inspiration taken from:
+    * - https://www.data-engineer.in/bigdata/flatten-dataframes-apache-spark-sql-1/
+    * - https://stackoverflow.com/questions/51329926/renaming-columns-recursively-in-a-netsted-structure-in-spark
+    *
+    * @param df dataset to traverse
+    * @param fn function to apply at each column; e.g. c => if (c.toString == "contact.person.age") c * 10 else c
+    * @return
+    */
+  def applyToDataset[T](df: Dataset[T], fn: Column => Column)(
+      implicit enc: Encoder[T]
+  ): Dataset[T] = {
+    val projection = traverse(df.schema, fn)
+    df.sqlContext.createDataFrame(df.select(projection: _*).rdd, enc.schema).as[T]
+  }
+
+  /**
+    * Construct projection through recursive schema traversal
+    * @param schema any struct schema (typically Dataset.schema)
+    * @param fn function to apply to each non-struct column within schema
+    * @return Array of columns for use in projection
+    * @example
+    *          val projection = traverse(df.schema, c => if (c.toString == "contact.person.age") c * 10 else c)
+    *          df.select(projection:_*) // This will apply the function to nested columns
+    */
+  def traverse(schema: StructType, fn: Column => Column, path: String = ""): Array[Column] = {
+    schema.fields.map(f => {
+      f.dataType match {
+        case s: StructType => struct(traverse(s, fn, path + f.name + "."): _*)
+        case _             => fn(col(path + f.name))
+      }
+    })
   }
 
   class Stopwatch {
