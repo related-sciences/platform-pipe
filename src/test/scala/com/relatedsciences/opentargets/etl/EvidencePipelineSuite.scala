@@ -37,7 +37,7 @@ class EvidencePipelineSuite extends FunSuite with SparkSessionWrapper with DataF
     assertResult(0, "Ids should be 32 char md5")(df.filter(length($"id") =!= 32).count())
 
     df = refs("normalizeTargetIds").asInstanceOf[Dataset[_]]
-    val idTypes = df.select(df("target_id_type")).distinct.map(_(0).toString).collect().toSet
+    val idTypes = df.select(df("context.target_id_type")).distinct.map(_(0).toString).collect().toSet
     assertResult(Set("uniprot", "ensembl"))(idTypes)
     assertResult(0L, "Target ids still contain URLs")(df.filter($"target.id".contains("/")).count())
     assertResult(0L, "Target ids are not all ensembl ids")(df.filter(!$"target.id".startsWith("ENSG")).count())
@@ -53,7 +53,6 @@ class EvidencePipelineSuite extends FunSuite with SparkSessionWrapper with DataF
     // Similarly, check the expected UniProt ids
     assertResult(0, "UniProt ids still exist")(getIdCt(Seq("P35354", "P10275")))
     assertResult(2, "Expected ids for UniProt ids not found")(getIdCt(Seq("ENSG00000073756", "ENSG00000169083")))
-
   }
 
 }

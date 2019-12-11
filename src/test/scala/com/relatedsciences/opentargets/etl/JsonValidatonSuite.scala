@@ -1,9 +1,9 @@
 package com.relatedsciences.opentargets.etl
 
-import com.relatedsciences.opentargets.etl.pipeline.{DateValidator, URIFormatValidator}
+import com.relatedsciences.opentargets.etl.pipeline.JsonValidation.{DateValidator, URIFormatValidator}
 import org.scalatest.FunSuite
 
-class JsonValidatorSuite extends FunSuite {
+class JsonValidatonSuite extends FunSuite {
 
   test("custom date format validator") {
     val validator = new DateValidator()
@@ -39,7 +39,7 @@ class JsonValidatorSuite extends FunSuite {
     ).foreach(d =>
       assert(!validator.validate(d).isPresent, s"URI '$d' expected to be valid but was found invalid"))
     // Test invalid uris
-    val invalidDates = Seq("").foreach(d =>
+    Seq("").foreach(d =>
       assert(validator.validate(d).isPresent, s"URI '$d' expected to be invalid but was found valid"))
   }
 }

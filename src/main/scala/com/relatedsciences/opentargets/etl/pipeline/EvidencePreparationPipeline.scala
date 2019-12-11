@@ -1,22 +1,15 @@
 package com.relatedsciences.opentargets.etl.pipeline
 
 import java.net.URL
-import java.time.format.{DateTimeFormatter, DateTimeFormatterBuilder}
-import java.util.Optional
-
 import com.relatedsciences.opentargets.etl.configuration.Configuration.Config
+import com.relatedsciences.opentargets.etl.pipeline.JsonValidation.RecordValidator
 import com.relatedsciences.opentargets.etl.pipeline.Pipeline.Spec
-import com.relatedsciences.opentargets.etl.schema.Parser
+import com.relatedsciences.opentargets.etl.Common.{UNI_ID_ORG_PREFIX, ENS_ID_ORG_PREFIX}
 import com.typesafe.scalalogging.LazyLogging
 import org.apache.spark.sql.catalyst.ScalaReflection
 import org.apache.spark.sql.functions._
 import org.apache.spark.sql.types.StructType
-import org.apache.spark.sql.{DataFrame, SparkSession, Dataset}
-import org.everit.json.schema.loader.SchemaLoader
-import org.everit.json.schema.{FormatValidator, Schema, ValidationException, Validator}
-import org.json.{JSONException, JSONObject, JSONTokener}
-
-import scala.util.Try
+import org.apache.spark.sql.{Column, DataFrame, Dataset, SparkSession}
 
 case class ValidationResult(isValid: Boolean = false,
                             reason: Option[String] = None,
@@ -26,113 +19,14 @@ case class ValidationResult(isValid: Boolean = false,
                             targetId: Option[String] = None,
                             diseaseId: Option[String] = None)
 
-/**
-* Custom validator implementation based on:
-  * https://github.com/everit-org/json-schema/blob/master/core/src/main/java/org/everit/json/schema/internal/DateTimeFormatValidator.java
-  *
-  * This is necessary to accommodate dates found in evidence data not matching default everit-org date patterns
-  */
-class DateValidator extends FormatValidator {
-
-  val PARSER = new Parser.DateParser()
-
-  override def validate(value: String): Optional[String] = {
-    // org.everit.json.schema.FormatValidator requires None for valid entries and Some(reason) otherwise
-    PARSER.parse(value) match {
-      case Some(_) => Optional.empty()
-      case None =>
-        Optional.of(s"[$value] is not a valid ${formatName()}. Expected one of: ${PARSER.formats}")
-    }
-  }
-
-  override def formatName(): String = "date-time"
-}
-
-/**
-  * Custom validator implementation based on:
-  * https://github.com/everit-org/json-schema/blob/master/core/src/main/java/org/everit/json/schema/internal/URIFormatValidator.java
-  */
-class URIFormatValidator extends FormatValidator {
-
-  override def validate(value: String): Optional[String] = {
-    value.trim.nonEmpty match {
-      case true => Optional.empty()
-      case false => Optional.of(s"URI value cannot be empty")
-    }
-  }
-
-  override def formatName(): String = "uri"
-
-}
-
 case class UniProtGeneLookup(ensembl_gene_id: String, uniprot_id: String)
 case class NonReferenceGeneLookup(reference: String, alternate: String)
-
-object RecordValidator {
-  var url = Option.empty[URL]
-
-  @transient lazy val schema: Schema = {
-    val u = url match {
-      case Some(url) => url
-      case None      => throw new IllegalStateException("OpenTargets schema URL not set")
-    }
-    SchemaLoader
-      .builder()
-      .schemaJson(new JSONObject(new JSONTokener(u.openStream())))
-      .enableOverrideOfBuiltInFormatValidators()
-      .addFormatValidator(new DateValidator())
-      .addFormatValidator(new URIFormatValidator())
-      .build()
-      .load()
-      .build()
-      .asInstanceOf[Schema]
-  }
-
-  @transient lazy val validator = Validator
-    .builder()
-    .failEarly()
-    .build()
-
-  def validate(rec: String): ValidationResult = {
-    try {
-      val obj = new JSONObject(rec)
-      val res = ValidationResult().copy(
-        sourceId = Try(Some(obj.getString("sourceID"))).getOrElse(Option.empty[String]),
-        // TODO: check to see how often "label" is used instead (should come up in invalid results)
-        dataType = Try(Some(obj.getString("type"))).getOrElse(Option.empty[String]),
-        targetId =
-          Try(Some(obj.getJSONObject("target").getString("id"))).getOrElse(Option.empty[String]),
-        diseaseId =
-          Try(Some(obj.getJSONObject("disease").getString("id"))).getOrElse(Option.empty[String])
-      )
-      if (res.sourceId.isEmpty) res.copy(reason = Some("missing_data_source"))
-      else if (res.dataType.isEmpty) res.copy(reason = Some("missing_data_type"))
-      else if (res.targetId.isEmpty) res.copy(reason = Some("missing_target_id"))
-      else if (res.diseaseId.isEmpty) res.copy(reason = Some("missing_disease_id"))
-      else {
-        try {
-          this.validator.performValidation(this.schema, obj)
-          res.copy(isValid = true)
-        } catch {
-          case e: ValidationException =>
-            res.copy(reason = Some("noncompliance_with_json_schema"), error = Some(e.toJSON.toString))
-        }
-      }
-    } catch {
-      case e: JSONException =>
-        ValidationResult(reason = Some("corrupt_json"), error = Some(e.getMessage))
-    }
-  }
-}
 
 class EvidencePreparationPipeline(ss: SparkSession, config: Config)
     extends SparkPipeline(ss, config)
     with LazyLogging {
   import ss.implicits._
   import com.relatedsciences.opentargets.etl.pipeline.SparkImplicits._
-
-  val UNI_ID_ORG_PREFIX = "http://identifiers.org/uniprot/"
-  val ENS_ID_ORG_PREFIX = "http://identifiers.org/ensembl/"
 
   // Initialize static schema location from dynamic configuration --
   // is there a better way to do this that still results in a serializable Spark task?
@@ -204,42 +98,63 @@ class EvidencePreparationPipeline(ss: SparkSession, config: Config)
       )
       // Assume last URL component contains identifiers
       // See https://github.com/opentargets/data_pipeline/blob/329ff219f9510d137c7609478b05d358c9195579/mrtarget/common/EvidenceString.py#L275
-      .withStructColumn("target", "id", element_at(split($"target.id", "/"), -1))
-      // TODO: This should be split out like get_ontology_code_from_url (https://github.com/opentargets/data_pipeline/blob/329ff219f9510d137c7609478b05d358c9195579/mrtarget/modules/Evidences.py#L201)
-      // TODO: Decide how to handle this check: https://github.com/opentargets/data_pipeline/blob/329ff219f9510d137c7609478b05d358c9195579/mrtarget/common/EvidenceString.py#L326
-      .withStructColumn("disease", "id", element_at(split($"disease.id", "/"), -1))
+      .mutateColumns("target.id")(Functions.getUrlBasename)
 
     // Resolve UniProt target identifiers
     val dfru = dfr
       // Join all target ids to UniProt ids (most will not match)
       .join(dfu, dfr("target.id") === dfu("uniprot:uniprot_id"), "left")
-      // Replace the target id with whatever value it matched to for UniProt ids only (it may be null)
-      .withStructColumn(
-        "target", "id",
-        when($"target_id_type" === "uniprot", $"uniprot:ensembl_gene_id")
-          .otherwise($"target.id")
+      // Create field with original id to be mapped from as provenance
+      .withColumn("target_id_uniprot",
+        when(
+          $"uniprot:ensembl_gene_id".isNotNull && ($"target_id_type" === "uniprot"),
+          $"uniprot:uniprot_id"
+        ).otherwise(null)
       )
+      // Replace the target id with whatever value it matched to
+      .mutateColumns("target.id")(c => {
+        when($"target_id_uniprot".isNotNull, $"uniprot:ensembl_gene_id")
+          .otherwise(c)
+      })
       .pipe(df => df.drop(df.columns.filter(_.startsWith("uniprot:")):_*))
 
     // Resolve "non-reference" target identifiers
     val dff = dfru
       // Join to reference/alternate genes on the alternate id
       .join(dfn, dfru("target.id") === dfn("nonref:alternate"), "left")
-      // Use the "reference" id for a matched alternate id if possible, otherwise leave the id alone
-      .withStructColumn(
-        "target", "id",
-        when($"nonref:reference".isNotNull, $"nonref:reference")
-          .otherwise($"target.id")
+      .withColumn("target_id_nonrefalt",
+        when(
+          $"nonref:reference".isNotNull && ($"target_id_type" =!= "other"),
+          $"nonref:alternate"
+        ).otherwise(null)
       )
+      // Use the "reference" id for a matched alternate id if possible, otherwise leave the id alone
+      .mutateColumns("target.id")(c => {
+        when($"target_id_nonrefalt".isNotNull, $"nonref:reference")
+          .otherwise(c)
+      })
       .pipe(df => df.drop(df.columns.filter(_.startsWith("nonref:")):_*))
 
     dff
+      // Pack the fields for transformation context into a separate struct
+      .withStruct("context", "target_id_type", "target_id_uniprot", "target_id_nonrefalt")
+  }
+
+  def normalizeDiseaseIds(df: DataFrame): DataFrame = {
+    // Replace raw EFO url strings with a single identifier
+    df.mutateColumns("disease.id")(Functions.parseDiseaseIdFromUrl)
   }
 
   def validateTargetIds(df: DataFrame): DataFrame = {
+
     // TODO: Look for diseases and genes not indexes, log summaries of missing, remove bad records
     // TODO: check all these: https://github.com/opentargets/data_pipeline/blob/329ff219f9510d137c7609478b05d358c9195579/mrtarget/common/EvidenceString.py#L334
     df
+  }
+
+  def fixFields(df: DataFrame): DataFrame = {
+    // TODO: catch everything in https://github.com/opentargets/data_pipeline/blob/329ff219f9510d137c7609478b05d358c9195579/mrtarget/common/EvidenceString.py#L153
+    ???
   }
 
   override def spec(): Spec = {
@@ -251,6 +166,7 @@ class EvidencePreparationPipeline(ss: SparkSession, config: Config)
       .andThen("runEvidenceSchemaValidation", runEvidenceSchemaValidation)
       .andThen("parseEvidenceData", parseEvidenceData)
       .andThen("normalizeTargetIds", normalizeTargetIds)
+      .andThen("normalizeDiseaseIds", normalizeDiseaseIds)
       .andThen("validateTargetIds", validateTargetIds)
       .end("end")
   }
