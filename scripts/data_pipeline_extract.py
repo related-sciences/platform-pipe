@@ -21,18 +21,20 @@ import logging
 es = new_es_client('http://elasticsearch:9200')
 
 
-def get_record_iterator(index, batch_size=10000):
+def get_record_iterator(index, id_field, batch_size=10000):
     # Setup scanner for entire index
     query = {"query": {"match_all": {}}}
     res = helpers.scan(es, query, index=index, size=batch_size, scroll='1h')
     for batch in more_itertools.chunked(tqdm.tqdm(res), batch_size):
         for r in batch:
-            yield r['_source']
+            rec = r['_source']
+            if id_field:
+                rec[id_field] = r['_id']
+            yield rec
 
-
-def export(index, out_file):
+def export(index, out_file, id_field):
     logging.info(f'Beginning export to {out_file}')
-    iterator = get_record_iterator(index)
+    iterator = get_record_iterator(index, id_field)
 
     # Delete output file if it exists
     if out_file.exists():
@@ -52,14 +54,16 @@ def run():
     parser.add_argument('--index', help='ES index name')
     parser.add_argument('--output-dir', default='~/data/ot/extract', help='Output directory for file')
     parser.add_argument('--output-filename', default='', help='Name of output file (default is {index}.jsonl)')
+    parser.add_argument('--id-field-name', default='', help='Name of field to assign ES _id field to (default is to exclude it)')
     args = parser.parse_args()
 
     index = args.index
     out_dir = Path(args.output_dir).expanduser()
     out_file = args.output_filename if args.output_filename else index + '.jsonl'
     out_file = out_dir / out_file
+    id_field = args.id_field_name
 
-    export(index, out_file)
+    export(index, out_file, id_field)
 
 
 if __name__ == '__main__':
