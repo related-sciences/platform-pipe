@@ -68,6 +68,10 @@ class EvidencePipelineSuite extends FunSuite with SparkSessionWrapper with DataF
     assertResult(2, "Expected ids for UniProt ids not found")(
       getIdCt(Seq("ENSG00000073756", "ENSG00000169083"))
     )
+
+    // for validation steps:
+    // check that all target ids match ENSG_[0-9]
+    // check that all disease ids match [something]_[0-9]
   }
 
 }
