@@ -25,4 +25,27 @@ abstract class SparkPipeline(ss: SparkSession, config: Config)
     logger.info(s"Saved data to '$path'")
     df
   }
+
+  def assertSizesEqual(df1: DataFrame, df2: DataFrame, msg: String): Unit = {
+    if (config.pipeline.enableAssertions) {
+      val expected = df1.count()
+      val actual = df2.count()
+      assert(expected == actual, msg.format(expected, actual))
+    }
+  }
+
+  def assertSchemasEqual(df1: DataFrame, df2: DataFrame, msg: String = ""): Unit = {
+    if (config.pipeline.enableAssertions) {
+      // Is there a better way to do this?
+      val equal = df1.schema.toString == df2.schema.toString
+      if (!equal) {
+        logger.error(s"[schema assertion error] Schema for data frame 1:\n")
+        df1.printSchema
+        logger.error(s"[schema assertion error] Schema for data frame 2:\n")
+        df2.printSchema
+      }
+      val prefix = if (msg.isEmpty) "Data frame schemas not equal" else msg
+      assert(equal, prefix + "; see schemas printed above for comparison")
+    }
+  }
 }

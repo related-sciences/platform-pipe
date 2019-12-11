@@ -99,4 +99,5 @@ class DataFrameOpsSuite extends FunSuite with SparkSessionWrapper {
     val actual2 = df3.select($"disease.id").collect().map(_(0)).toSeq
     assertResult(Seq("EFO_1000233", null))(actual2)
   }
+
 }

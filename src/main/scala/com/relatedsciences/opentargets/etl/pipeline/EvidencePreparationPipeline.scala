@@ -39,15 +39,15 @@ class EvidencePreparationPipeline(ss: SparkSession, config: Config)
     val validatorUdf =
       udf((record: String) => RecordValidator.validate(record), validationResultSchema)
     val dfv = df
-      .withColumn("validation", validatorUdf(col("value")))
-      .select(col("value"), col("validation.*"))
+      .withColumn("validation", validatorUdf($"value"))
+      .select($"value", $"validation.*")
 
     // Save bad records as well as the frequencies by source and cause
-    this.save(dfv.groupBy("sourceID", "reason").count(), config.evidenceValidationSummaryPath)
-    this.save(dfv.filter(!col("isValid")), config.evidenceValidationErrorsPath)
+    this.save(dfv.groupBy("sourceID", "reason").count(), config.evidenceSchemaValidationSummaryPath)
+    this.save(dfv.filter(!$"isValid"), config.evidenceSchemaValidationErrorsPath)
 
     // Return only valid records and attach hash-based id
-    dfv.filter(col("isValid"))
+    dfv.filter($"isValid")
   }
 
   def parseEvidenceData(df: DataFrame): DataFrame = {
@@ -58,19 +58,32 @@ class EvidencePreparationPipeline(ss: SparkSession, config: Config)
   }
 
   /**
-  * Load Ensembl and UniProt ids such that uniprot ids include all accessions, with ensembl id repeated for each.
+    * Load gene index export (currently from ES)
+    */
+  def getGeneIndexData: DataFrame = {
+    ss.read.json(config.geneDataPath)
+  }
+
+  /**
+    * Load EFO index export (currently from ES)
+    */
+  def getEFOIndexData: DataFrame = {
+    ss.read.json(config.efoDataPath)
+  }
+
+  /**
+    * Load Ensembl and UniProt ids such that uniprot ids include all accessions, with ensembl id repeated for each.
     * UniProt ids will be null when not applicable.
     *
     * Approx. 129k rows
     */
   def getUniProtGeneLookup: Dataset[UniProtGeneLookup] = {
-    ss.read.json(config.geneDataPath)
+    getGeneIndexData
       .select($"ensembl_gene_id", explode_outer(
         concat(array($"uniprot_id"), $"uniprot_accessions")
       ).as("uniprot_id"))
       // Convert empty to null to avoid ambiguity post-downstream-join
       .withColumn("uniprot_id", when(trim($"uniprot_id") =!= "", $"uniprot_id").otherwise(lit(null: String)))
-      .dropDuplicates()
       .as[UniProtGeneLookup]
   }
 
@@ -82,12 +95,18 @@ class EvidencePreparationPipeline(ss: SparkSession, config: Config)
     */
   def getNonReferenceGeneLookup: Dataset[NonReferenceGeneLookup] = {
     ss.read.option("header", "true")
-      .csv(config.nonRefGeneDataPath).as[NonReferenceGeneLookup]
+      .csv(config.nonRefGeneDataPath)
+      .as[NonReferenceGeneLookup]
   }
 
   def normalizeTargetIds(df: DataFrame): DataFrame = {
+    // For each dataset to join on, make sure to drop duplicates (arbitrarily)
+    // by the key to be joined ON (not the id field used to reassign target ids);
+    // this is necessary to keep result from gaining new records
     val dfu = getUniProtGeneLookup.toDF().addPrefix("uniprot:")
+      .dropDuplicates("uniprot:uniprot_id")
     val dfn = getNonReferenceGeneLookup.toDF().addPrefix("nonref:").cache()
+      .dropDuplicates("nonref:alternate")
 
     val dfr = df
       // Determine which type of identifier is used based on prefix
@@ -117,6 +136,7 @@ class EvidencePreparationPipeline(ss: SparkSession, config: Config)
           .otherwise(c)
       })
       .pipe(df => df.drop(df.columns.filter(_.startsWith("uniprot:")):_*))
+    assertSizesEqual(dfr, dfru, "Num evidence rows changed after join (expected = %s, actual = %s)")
 
     // Resolve "non-reference" target identifiers
     val dff = dfru
@@ -134,6 +154,7 @@ class EvidencePreparationPipeline(ss: SparkSession, config: Config)
           .otherwise(c)
       })
       .pipe(df => df.drop(df.columns.filter(_.startsWith("nonref:")):_*))
+    assertSizesEqual(dfru, dff, "Num evidence rows changed after join (expected = %s, actual = %s)")
 
     dff
       // Pack the fields for transformation context into a separate struct
@@ -146,14 +167,65 @@ class EvidencePreparationPipeline(ss: SparkSession, config: Config)
   }
 
   def validateTargetIds(df: DataFrame): DataFrame = {
+    val dfg = getGeneIndexData.select($"id".as("gene_index:id"))
 
-    // TODO: Look for diseases and genes not indexes, log summaries of missing, remove bad records
+    // Join to gene index data to detect unmapped gene/target ids
+    val dfv = df
+      .join(dfg, df("target.id") === dfg("gene_index:id"), "left")
+      .withColumn("reason",
+        when($"target.id".isNull, "id_null")
+          .otherwise(
+            when($"gene_index:id".isNull, "id_not_found")
+            .otherwise(null)
+          )
+      )
+    assertSizesEqual(df, dfv, "Num evidence rows changed after join (expected = %s, actual = %s)")
+
+    // Save all invalid records and a count summary
+    this.save(dfv.groupBy("sourceID", "reason").count(), config.evidenceTargetIdValidationSummaryPath)
+    this.save(dfv.filter(!$"reason".isNull), config.evidenceTargetIdValidationErrorsPath)
+
+    // Return only valid records and drop added fields
+    val dfr = dfv.filter($"reason".isNull)
+        .drop("reason", "gene_index:id")
+    assertSchemasEqual(df, dfr)
+    dfr
+  }
+
+  def validateDiseaseIds(df: DataFrame): DataFrame = {
     // TODO: check all these: https://github.com/opentargets/data_pipeline/blob/329ff219f9510d137c7609478b05d358c9195579/mrtarget/common/EvidenceString.py#L334
-    df
+    val dfd = getEFOIndexData.select($"code".as("efo_index:id"))
+
+    // Join to gene index data to detect unmapped gene/target ids
+    val dfv = df
+      .join(dfd, df("disease.id") === dfd("efo_index:id"), "left")
+      .withColumn("reason",
+        when($"disease.id".isNull, "id_null")
+          .otherwise(
+            when($"efo_index:id".isNull, "id_not_found")
+              .otherwise(null)
+          )
+      )
+    assertSizesEqual(df, dfv, "Num evidence rows changed after join (expected = %s, actual = %s)")
+
+    // Save all invalid records and a count summary
+    this.save(dfv.groupBy("sourceID", "reason").count(), config.evidenceDiseaseIdValidationSummaryPath)
+    this.save(dfv.filter(!$"reason".isNull), config.evidenceDiseaseIdValidationErrorsPath)
+
+    // Return only valid records and drop added fields
+    val dfr = dfv.filter($"reason".isNull)
+      .drop("reason", "efo_index:id")
+    assertSchemasEqual(df, dfr)
+    dfr
   }
 
   def fixFields(df: DataFrame): DataFrame = {
     // TODO: catch everything in https://github.com/opentargets/data_pipeline/blob/329ff219f9510d137c7609478b05d358c9195579/mrtarget/common/EvidenceString.py#L153
+    //    dfv
+    //      // Merge the new context into context struct
+    //      .withStruct("context_new", "target_id_invalid_reason")
+    //      .withColumn("context", struct($"context.*", $"context_new.*"))
+    //      .drop("context_new")
     ???
   }
 
@@ -168,6 +240,7 @@ class EvidencePreparationPipeline(ss: SparkSession, config: Config)
       .andThen("normalizeTargetIds", normalizeTargetIds)
       .andThen("normalizeDiseaseIds", normalizeDiseaseIds)
       .andThen("validateTargetIds", validateTargetIds)
+      .andThen("validateDiseaseIds", validateDiseaseIds)
       .end("end")
   }
 }
