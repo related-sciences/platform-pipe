@@ -5,36 +5,44 @@ import java.nio.file.Paths
 object Configuration {
 
   case class PipelineScoring(
-      allowUnknownDataType: Boolean,
-      allowMissingScore: Boolean,
-      saveEvidenceScores: Boolean,
-      evidenceExtractDirName: String,
-      sourceWeights: Map[String, Double]
-  )
+                              allowUnknownDataType: Boolean,
+                              allowMissingScore: Boolean,
+                              saveEvidenceScores: Boolean,
+                              evidenceExtractDirName: String,
+                              sourceWeights: Map[String, Double]
+                            )
+
   case class PipelineEvidence(
-      rawEvidenceDirName: String,
-      geneExtractDirName: String,
-      efoExtractDirName: String,
-      excludedBiotypes: Map[String, List[String]]
-  )
+                               rawEvidenceDirName: String,
+                               geneExtractDirName: String,
+                               efoExtractDirName: String,
+                               excludedBiotypes: Map[String, List[String]]
+                             )
+
   case class PipelineDecoratorConfig(enabled: Boolean)
+
   case class ExternalConfig(mrtargetData: URL, mrtargetEs: URL)
+
+  case class DataSource(name: String, `type`: String)
+
   case class Pipeline(
-      scoring: PipelineScoring,
-      evidence: PipelineEvidence,
-      decorators: Map[String, PipelineDecoratorConfig],
-      enableAssertions: Boolean
-  )
+                       scoring: PipelineScoring,
+                       evidence: PipelineEvidence,
+                       decorators: Map[String, PipelineDecoratorConfig],
+                       enableAssertions: Boolean
+                     )
+
   case class Config(
-      sparkUri: String,
-      inputDir: String,
-      outputDir: String,
-      resourceDir: String,
-      logLevel: String,
-      evidenceJsonSchema: String,
-      externalConfig: ExternalConfig,
-      pipeline: Pipeline
-  ) {
+                     sparkUri: String,
+                     inputDir: String,
+                     outputDir: String,
+                     resourceDir: String,
+                     logLevel: String,
+                     evidenceJsonSchema: String,
+                     dataSources: List[DataSource],
+                     externalConfig: ExternalConfig,
+                     pipeline: Pipeline
+                   ) {
 
     // Evidence prep paths
     lazy val evidenceSchemaValidationSummaryPath: String =
@@ -49,6 +57,10 @@ object Configuration {
       Paths.get(outputDir).resolve("errors/evidence_disease_id_validation_summary.parquet").toString
     lazy val evidenceDiseaseIdValidationErrorsPath: String =
       Paths.get(outputDir).resolve("errors/evidence_disease_id_validation_errors.parquet").toString
+    lazy val evidenceDataSourceValidationSummaryPath: String =
+      Paths.get(outputDir).resolve("errors/evidence_data_source_validation_summary.parquet").toString
+    lazy val evidenceDataSourceValidationErrorsPath: String =
+      Paths.get(outputDir).resolve("errors/evidence_data_source_validation_errors.parquet").toString
 
     // Entity data paths
     lazy val geneDataPath: String =
@@ -69,11 +81,13 @@ object Configuration {
 
     // Paths that will change in the near future:
     lazy val rawEvidencePath
-        : String = // This is a stop-gap destination for downloaded public GS files
+    : String = // This is a stop-gap destination for downloaded public GS files
       Paths.get(inputDir).resolve(pipeline.evidence.rawEvidenceDirName).toString
     lazy val evidenceExtractPath
-        : String = // This contains extracts from ES that should ultimately be used in pipeline
+    : String = // This contains extracts from ES that should ultimately be used in pipeline
       Paths.get(inputDir).resolve(pipeline.scoring.evidenceExtractDirName).toString
+
+    lazy val dataSourceToType: Map[String, String] = dataSources.map(s => s.name -> s.`type`).toMap
 
   }
 

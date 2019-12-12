@@ -15,15 +15,48 @@ class DataFrameOpsSuite extends FunSuite with SparkSessionWrapper {
   import ss.implicits._
 
   test("struct packing") {
+    case class IS(v1: Int, v2: Double)
     val df = Seq(
-      (1, "x", 1.0, "a"),
-      (2, "y", 2.0, "b")
+      (1, "x", 1.0, List("a", "b")),
+      (2, "y", 2.0, List("x", "y"))
     ).toDF("id", "f1", "f2", "f3")
-    val df2 = df.withStruct("obj", "f2", "f3")
-    assertResult(Array("id", "f1", "obj"))(df2.columns)
-    assertResult(List(List(1.0, "a"), List(2.0, "b")))(
+      .withColumn("f4", struct(
+        lit(1).as("if1"),
+        lit("a").as("if2")
+      ))
+    //+---+---+---+------+------+
+    //| id| f1| f2|    f3|    f4|
+    //+---+---+---+------+------+
+    //|  1|  x|1.0|[a, b]|[1, a]|
+    //|  2|  y|2.0|[x, y]|[1, a]|
+    //+---+---+---+------+------+
+    //root
+    //|-- id: integer (nullable = false)
+    //|-- f1: string (nullable = true)
+    //|-- f2: double (nullable = false)
+    //|-- f3: array (nullable = true)
+    //|    |-- element: string (containsNull = true)
+    //|-- f4: struct (nullable = false)
+    //|    |-- if1: integer (nullable = false)
+    //|    |-- if2: string (nullable = false)
+
+    // Test creation of non-existent struct
+    val df2 = df.appendStruct("obj", "f1", "f2")
+    assertResult(Array("id", "f3", "f4", "obj"))(df2.columns)
+    assertResult(Array("f1", "f2"))(df2.select("obj.*").columns)
+    assertResult(List(List("x", 1.0), List("y", 2.0)))(
       df2.select("obj.*").rdd.collect().toList.map(_.toSeq.toList)
     )
+
+    // Test single column append
+    val df3 = df2.appendStruct("obj", "f3")
+    assertResult(Array("id", "f4", "obj"))(df3.columns)
+    assertResult(Array("f1", "f2", "f3"))(df3.select("obj.*").columns)
+
+    // Test multi-column append
+    val df4 = df2.appendStruct("obj", "f3", "f4")
+    assertResult(Array("id", "obj"))(df4.columns)
+    assertResult(Array("f1", "f2", "f3", "f4"))(df4.select("obj.*").columns)
   }
 
   test("basic nested struct mutation") {

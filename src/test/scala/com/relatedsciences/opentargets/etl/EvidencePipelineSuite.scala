@@ -3,6 +3,7 @@ import java.nio.file.Paths
 
 import com.relatedsciences.opentargets.etl.configuration.Configuration.Config
 import com.relatedsciences.opentargets.etl.pipeline.{EvidencePreparationPipeline, PipelineState}
+import com.relatedsciences.opentargets.etl.schema.{DataSource, DataType}
 import org.apache.log4j.Logger
 import org.apache.spark.sql.Dataset
 import org.apache.spark.sql.functions.{col, length}
@@ -11,7 +12,10 @@ import org.scalatest.FunSuite
 /**
   * Test for end-to-end evidence pipeline validation
   *
-  * Expected results are computed by notebooks in notebooks/testing
+  * Expected results are computed by notebook at notebooks/testing/evidence-test-data-extractor.ipynb.
+  * Documentation for data that was not programmatically generated
+  * (in src/test/resources/pipeline_test/input/evidence_raw.json) can be found at
+  * src/test/resources/pipeline_test/README.md.
   */
 class EvidencePipelineSuite extends FunSuite with SparkSessionWrapper with DataFrameComparison {
 
@@ -80,19 +84,20 @@ class EvidencePipelineSuite extends FunSuite with SparkSessionWrapper with DataF
         .select("disease.id").collect().toList.map(_(0))
     assertResult(0, s"Found invalid disease ids: ${invalidDiseaseIds}")(invalidDiseaseIds.size)
 
-    // Validate that expected bad records are still present
-    assertResult(1)(df.filter($"target.id".endsWith("ENSG999999")).count)
-    assertResult(1)(df.filter($"disease.id".contains("BAD_EFO_ID")).count)
-    assertResult(1)(df.filter($"target.id".contains("ENSG00000240253") && $"sourceID" === "expression_atlas").count)
-    assertResult(1)(df.filter($"target.id".contains("ENSG00000169174") && $"sourceID" === "expression_atlas" && $"disease.id" === "EFO_0004267").count)
-
-    df = refs("validateDiseaseIds").asInstanceOf[Dataset[_]]
-    // Check that bad records are all gone after validation
-    assertResult(0)(df.filter($"target.id".endsWith("ENSG999999")).count)
-    assertResult(0)(df.filter($"disease.id".contains("BAD_EFO_ID")).count)
-    assertResult(0)(df.filter($"target.id".contains("ENSG00000240253") && $"sourceID" === "expression_atlas").count)
-    // Check single fake record with non-filtered biotype
-    assertResult(1)(df.filter($"target.id".contains("ENSG00000169174") && $"sourceID" === "expression_atlas" && $"disease.id" === "EFO_0004267").count)
+    // Check expected existence of test records both pre and post validation
+    assertResult(1)(df.filter($"target.target_name" === "sim001-badtargetid").count)
+    assertResult(1)(df.filter($"target.target_name" === "sim002-badefoid").count)
+    assertResult(1)(df.filter($"target.target_name" === "sim003-excludedbiotype").count)
+    assertResult(1)(df.filter($"target.target_name" === "sim004-includedbiotype").count)
+    assertResult(1)(df.filter($"target.target_name" === "sim005-badsource").count)
+    df = refs("validateDataSources").asInstanceOf[Dataset[_]] // Result of final validation* step
+    assert(df.count() <= initialCt)
+    assertResult(0)(df.filter($"target.target_name" === "sim001-badtargetid").count)
+    assertResult(0)(df.filter($"target.target_name" === "sim002-badefoid").count)
+    assertResult(0)(df.filter($"target.target_name" === "sim003-excludedbiotype").count)
+    assertResult(0)(df.filter($"target.target_name" === "sim005-badsource").count)
+    // Check single fake record with non-filtered biotype still exists
+    assertResult(1)(df.filter($"target.target_name" === "sim004-includedbiotype").count)
   }
 
 }

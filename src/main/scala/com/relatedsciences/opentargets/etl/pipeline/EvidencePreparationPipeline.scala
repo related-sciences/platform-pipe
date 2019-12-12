@@ -2,15 +2,16 @@ package com.relatedsciences.opentargets.etl.pipeline
 
 import java.net.URL
 
+import com.relatedsciences.opentargets.etl.Common.{ENS_ID_ORG_PREFIX, UNI_ID_ORG_PREFIX}
 import com.relatedsciences.opentargets.etl.configuration.Configuration.Config
 import com.relatedsciences.opentargets.etl.pipeline.JsonValidation.RecordValidator
 import com.relatedsciences.opentargets.etl.pipeline.Pipeline.Spec
-import com.relatedsciences.opentargets.etl.Common.{ENS_ID_ORG_PREFIX, UNI_ID_ORG_PREFIX}
+import com.relatedsciences.opentargets.etl.schema.{DataSource, DataType}
 import com.typesafe.scalalogging.LazyLogging
 import org.apache.spark.sql.catalyst.ScalaReflection
 import org.apache.spark.sql.functions.{when, _}
 import org.apache.spark.sql.types.StructType
-import org.apache.spark.sql.{Column, DataFrame, Dataset, SparkSession}
+import org.apache.spark.sql.{DataFrame, Dataset, SparkSession}
 
 case class ValidationResult(
     isValid: Boolean = false,
@@ -28,8 +29,8 @@ case class NonReferenceGeneLookup(reference: String, alternate: String)
 class EvidencePreparationPipeline(ss: SparkSession, config: Config)
     extends SparkPipeline(ss, config)
     with LazyLogging {
-  import ss.implicits._
   import com.relatedsciences.opentargets.etl.pipeline.SparkImplicits._
+  import ss.implicits._
 
   // Initialize static schema location from dynamic configuration --
   // is there a better way to do this that still results in a serializable Spark task?
@@ -38,24 +39,16 @@ class EvidencePreparationPipeline(ss: SparkSession, config: Config)
   lazy val validationResultSchema: StructType =
     ScalaReflection.schemaFor[ValidationResult].dataType.asInstanceOf[StructType]
 
-
-  private def summarizeErrors(df: DataFrame, summaryPath: String, recordsPath: String): DataFrame = {
-    save(df.groupBy("sourceID", "reason").count(), summaryPath)
-    save(df.filter(!$"is_valid"), recordsPath)
-    df
-  }
-
   def runEvidenceSchemaValidation(df: Dataset[String]): DataFrame = {
     val validatorUdf =
       udf((record: String) => RecordValidator.validate(record), validationResultSchema)
-    val dfv = df
-      .withColumn("validation", validatorUdf($"value"))
+    df.withColumn("validation", validatorUdf($"value"))
       .select($"value", $"validation.*")
       .withColumnRenamed("isValid", "is_valid")
-
-    // Save bad records as well as the frequencies by source and cause
-    summarizeErrors(dfv, config.evidenceSchemaValidationSummaryPath, config.evidenceSchemaValidationErrorsPath)
-    dfv.filter($"is_valid")
+      // Save bad records as well as their frequencies by source and cause
+      .transform(summarizeValidationErrors(config.evidenceSchemaValidationSummaryPath,
+                                           config.evidenceSchemaValidationErrorsPath))
+      .filter($"is_valid")
   }
 
   def parseEvidenceData(df: DataFrame): DataFrame = {
@@ -101,7 +94,8 @@ class EvidencePreparationPipeline(ss: SparkSession, config: Config)
       // Convert empty to null to avoid ambiguity post-downstream-join
       .withColumn(
         "uniprot_id",
-        when(trim($"uniprot_id") =!= "", $"uniprot_id").otherwise(lit(null: String))
+        when(trim($"uniprot_id") =!= "", $"uniprot_id")
+        // otherwise null
       )
       .as[UniProtGeneLookup]
   }
@@ -155,15 +149,16 @@ class EvidencePreparationPipeline(ss: SparkSession, config: Config)
         when(
           $"uniprot:ensembl_gene_id".isNotNull && ($"target_id_type" === "uniprot"),
           $"uniprot:uniprot_id"
-        ).otherwise(null)
+        ) // otherwise null
       )
       // Replace the target id with whatever value it matched to
       .mutateColumns("target.id")(c => {
         when($"target_id_uniprot".isNotNull, $"uniprot:ensembl_gene_id")
           .otherwise(c)
       })
-      .pipe(df => df.drop(df.columns.filter(_.startsWith("uniprot:")): _*))
-    assertSizesEqual(dfr, dfru, "Num evidence rows changed after join (expected = %s, actual = %s)")
+      .transform(df => df.drop(df.columns.filter(_.startsWith("uniprot:")): _*))
+      .transform(
+        assertSizesEqual(dfr, "Num evidence rows changed after join (expected = %s, actual = %s)"))
 
     // Resolve "non-reference" target identifiers
     val dff = dfru
@@ -174,19 +169,20 @@ class EvidencePreparationPipeline(ss: SparkSession, config: Config)
         when(
           $"nonref:reference".isNotNull && ($"target_id_type" =!= "other"),
           $"nonref:alternate"
-        ).otherwise(null)
+        ) // otherwise null
       )
       // Use the "reference" id for a matched alternate id if possible, otherwise leave the id alone
       .mutateColumns("target.id")(c => {
         when($"target_id_nonrefalt".isNotNull, $"nonref:reference")
           .otherwise(c)
       })
-      .pipe(df => df.drop(df.columns.filter(_.startsWith("nonref:")): _*))
-    assertSizesEqual(dfru, dff, "Num evidence rows changed after join (expected = %s, actual = %s)")
+      .transform(df => df.drop(df.columns.filter(_.startsWith("nonref:")): _*))
+      .transform(
+        assertSizesEqual(dfru, "Num evidence rows changed after join (expected = %s, actual = %s)"))
 
     dff
     // Pack the fields for transformation context into a separate struct
-      .withStruct("context", "target_id_type", "target_id_uniprot", "target_id_nonrefalt")
+      .appendStruct("context", "target_id_type", "target_id_uniprot", "target_id_nonrefalt")
   }
 
   def normalizeDiseaseIds(df: DataFrame): DataFrame = {
@@ -194,41 +190,55 @@ class EvidencePreparationPipeline(ss: SparkSession, config: Config)
     df.mutateColumns("disease.id")(Functions.parseDiseaseIdFromUrl)
   }
 
+  /**
+    * Clean up source/type names that are not mapped as desired upstream
+    */
+  def normalizeDataSources(df: DataFrame): DataFrame = {
+    // Converts from eva + somatic_mutation -> eva_somatic no longer appears necessary since this
+    // combination does not occur in the raw evidence now (must have been fixed upstream).  For posterity:
+    // - https://github.com/opentargets/data_pipeline/blob/329ff219f9510d137c7609478b05d358c9195579/mrtarget/common/EvidenceString.py#L183
+    // - df.withColumn("source_assignment", when($"sourceID" === DataSource.eva.toString && $"type" === DataType.somatic_mutation.toString, DataSource.eva_somatic.toString))
+    //     .withColumn("sourceID", coalesce($"source_assignment", $"sourceID"))
+    // "genetic_literature" types do occur regularly though, so include that normalization:
+    df.withColumn("type_assignment",
+                  when($"type" === DataType.genetic_literature.toString,
+                       DataType.genetic_association.toString))
+      .withColumn("type", coalesce($"type_assignment", $"type"))
+      .appendStruct("context", "type_assignment")
+  }
+
   def validateTargetIds(df: DataFrame): DataFrame = {
     val dfg = getGeneIndexData.select("id", "biotype").addPrefix("gene_index:")
 
-    // Join to gene index data to detect unmapped gene/target ids
-    // TODO: biotype filter: https://github.com/opentargets/data_pipeline/blob/329ff219f9510d137c7609478b05d358c9195579/mrtarget/common/EvidenceString.py#L297
-    // TODO: double check these: https://github.com/opentargets/data_pipeline/blob/329ff219f9510d137c7609478b05d358c9195579/mrtarget/common/EvidenceString.py#L334
+    // Load map of data_source -> array[excluded_biotype]
     val btlkp = typedLit(config.pipeline.evidence.excludedBiotypes)
-    val dfv = df
-      .join(dfg, df("target.id") === dfg("gene_index:id"), "left")
+
+    // Join to gene index data to detect unmapped gene/target ids and apply biotype filter
+    // TODO: double check these: https://github.com/opentargets/data_pipeline/blob/329ff219f9510d137c7609478b05d358c9195579/mrtarget/common/EvidenceString.py#L334
+    df.join(dfg, df("target.id") === dfg("gene_index:id"), "left")
       .withColumn("excluded_biotypes", btlkp($"sourceID"))
       .withColumn(
         "reason",
-          when($"target.id".isNull, "id_null")
-            .when($"gene_index:id".isNull, "id_not_found")
-            .when(array_contains($"excluded_biotypes", $"gene_index:biotype"), "biotype_exclusion")
-            .otherwise(null)
+        when($"target.id".isNull, "id_null")
+          .when($"gene_index:id".isNull, "id_not_found")
+          .when(array_contains($"excluded_biotypes", $"gene_index:biotype"), "biotype_exclusion")
+        // otherwise null
       )
       .withColumn("is_valid", $"reason".isNull)
-    assertSizesEqual(df, dfv, "Num evidence rows changed after join (expected = %s, actual = %s)")
-    summarizeErrors(dfv, config.evidenceTargetIdValidationSummaryPath, config.evidenceTargetIdValidationErrorsPath)
-
-    // Return only valid records and drop added fields
-    val dfr = dfv
+      .transform(
+        assertSizesEqual(df, "Num evidence rows changed after join (expected = %s, actual = %s)"))
+      .transform(summarizeValidationErrors(config.evidenceTargetIdValidationSummaryPath,
+                                           config.evidenceTargetIdValidationErrorsPath))
       .filter($"is_valid")
-      .drop("reason", "excluded_biotypes", "is_valid", "gene_index:id", "gene_index:biotype")
-    assertSchemasEqual(df, dfr)
-    dfr
+      .drop("is_valid", "reason", "excluded_biotypes", "gene_index:id", "gene_index:biotype")
+      .transform(assertSchemasEqual(df))
   }
 
   def validateDiseaseIds(df: DataFrame): DataFrame = {
     val dfd = getEFOIndexData.select($"id".as("efo_index:id"))
 
     // Join to gene index data to detect unmapped gene/target ids
-    val dfv = df
-      .join(dfd, df("disease.id") === dfd("efo_index:id"), "left")
+    df.join(dfd, df("disease.id") === dfd("efo_index:id"), "left")
       .withColumn(
         "reason",
         when($"disease.id".isNull, "id_null")
@@ -236,15 +246,28 @@ class EvidencePreparationPipeline(ss: SparkSession, config: Config)
           .otherwise(null)
       )
       .withColumn("is_valid", $"reason".isNull)
-    assertSizesEqual(df, dfv, "Num evidence rows changed after join (expected = %s, actual = %s)")
-    summarizeErrors(dfv, config.evidenceDiseaseIdValidationSummaryPath, config.evidenceDiseaseIdValidationErrorsPath)
-
-    // Return only valid records and drop added fields
-    val dfr = dfv
+      .transform(
+        assertSizesEqual(df, "Num evidence rows changed after join (expected = %s, actual = %s)"))
+      .transform(summarizeValidationErrors(config.evidenceDiseaseIdValidationSummaryPath,
+                                           config.evidenceDiseaseIdValidationErrorsPath))
       .filter($"is_valid")
       .drop("reason", "is_valid", "efo_index:id")
-    assertSchemasEqual(df, dfr)
-    dfr
+      .transform(assertSchemasEqual(df))
+  }
+
+  def validateDataSources(df: DataFrame): DataFrame = {
+    val validDataSources = config.dataSources.map(_.name)
+    df.withColumn("reason",
+                  when(!$"sourceID".isin(validDataSources: _*), "invalid_data_source")
+                  // otherwise null
+      )
+      .withColumn("is_valid", $"reason".isNull)
+      .transform(summarizeValidationErrors(config.evidenceDataSourceValidationSummaryPath,
+                                           config.evidenceDataSourceValidationErrorsPath))
+      .filter($"is_valid")
+      .drop("is_valid", "reason")
+      // Assert schema b/c all "validate*" methods should only filter, not mutate
+      .transform(assertSchemasEqual(df))
   }
 
   def fixFields(df: DataFrame): DataFrame = {
@@ -267,8 +290,10 @@ class EvidencePreparationPipeline(ss: SparkSession, config: Config)
       .andThen("parseEvidenceData", parseEvidenceData)
       .andThen("normalizeTargetIds", normalizeTargetIds)
       .andThen("normalizeDiseaseIds", normalizeDiseaseIds)
+      .andThen("normalizeDataSources", normalizeDataSources)
       .andThen("validateTargetIds", validateTargetIds)
       .andThen("validateDiseaseIds", validateDiseaseIds)
+      .andThen("validateDataSources", validateDataSources)
       .end("end")
   }
 }
