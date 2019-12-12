@@ -37,19 +37,24 @@ class EvidencePreparationPipeline(ss: SparkSession, config: Config)
   lazy val validationResultSchema: StructType =
     ScalaReflection.schemaFor[ValidationResult].dataType.asInstanceOf[StructType]
 
+
+  private def summarizeErrors(df: DataFrame, summaryPath: String, recordsPath: String): DataFrame = {
+    save(df.groupBy("sourceID", "reason").count(), summaryPath)
+    save(df.filter(!$"is_valid"), recordsPath)
+    df
+  }
+
   def runEvidenceSchemaValidation(df: Dataset[String]): DataFrame = {
     val validatorUdf =
       udf((record: String) => RecordValidator.validate(record), validationResultSchema)
     val dfv = df
       .withColumn("validation", validatorUdf($"value"))
       .select($"value", $"validation.*")
+      .withColumnRenamed("isValid", "is_valid")
 
     // Save bad records as well as the frequencies by source and cause
-    this.save(dfv.groupBy("sourceID", "reason").count(), config.evidenceSchemaValidationSummaryPath)
-    this.save(dfv.filter(!$"isValid"), config.evidenceSchemaValidationErrorsPath)
-
-    // Return only valid records and attach hash-based id
-    dfv.filter($"isValid")
+    summarizeErrors(dfv, config.evidenceSchemaValidationSummaryPath, config.evidenceSchemaValidationErrorsPath)
+    dfv.filter($"is_valid")
   }
 
   def parseEvidenceData(df: DataFrame): DataFrame = {
@@ -62,6 +67,8 @@ class EvidencePreparationPipeline(ss: SparkSession, config: Config)
 
   /**
     * Load gene index export (currently from ES)
+    *
+    * Approx. 60.5k rows
     */
   def getGeneIndexData: DataFrame = {
     ss.read.json(config.geneDataPath)
@@ -69,6 +76,8 @@ class EvidencePreparationPipeline(ss: SparkSession, config: Config)
 
   /**
     * Load EFO index export (currently from ES)
+    *
+    * Approx. 15.6k rows
     */
   def getEFOIndexData: DataFrame = {
     ss.read.json(config.efoDataPath)
@@ -188,6 +197,8 @@ class EvidencePreparationPipeline(ss: SparkSession, config: Config)
     val dfg = getGeneIndexData.select($"id".as("gene_index:id"))
 
     // Join to gene index data to detect unmapped gene/target ids
+    // TODO: biotype filter: https://github.com/opentargets/data_pipeline/blob/329ff219f9510d137c7609478b05d358c9195579/mrtarget/common/EvidenceString.py#L297
+    // TODO: double check these: https://github.com/opentargets/data_pipeline/blob/329ff219f9510d137c7609478b05d358c9195579/mrtarget/common/EvidenceString.py#L334
     val dfv = df
       .join(dfg, df("target.id") === dfg("gene_index:id"), "left")
       .withColumn(
@@ -198,24 +209,20 @@ class EvidencePreparationPipeline(ss: SparkSession, config: Config)
               .otherwise(null)
           )
       )
+      .withColumn("is_valid", $"reason".isNull)
     assertSizesEqual(df, dfv, "Num evidence rows changed after join (expected = %s, actual = %s)")
-
-    // Save all invalid records and a count summary
-    this
-      .save(dfv.groupBy("sourceID", "reason").count(), config.evidenceTargetIdValidationSummaryPath)
-    this.save(dfv.filter(!$"reason".isNull), config.evidenceTargetIdValidationErrorsPath)
+    summarizeErrors(dfv, config.evidenceTargetIdValidationSummaryPath, config.evidenceTargetIdValidationErrorsPath)
 
     // Return only valid records and drop added fields
     val dfr = dfv
-      .filter($"reason".isNull)
-      .drop("reason", "gene_index:id")
+      .filter($"is_valid")
+      .drop("reason", "is_valid", "gene_index:id")
     assertSchemasEqual(df, dfr)
     dfr
   }
 
   def validateDiseaseIds(df: DataFrame): DataFrame = {
-    // TODO: check all these: https://github.com/opentargets/data_pipeline/blob/329ff219f9510d137c7609478b05d358c9195579/mrtarget/common/EvidenceString.py#L334
-    val dfd = getEFOIndexData.select($"code".as("efo_index:id"))
+    val dfd = getEFOIndexData.select($"id".as("efo_index:id"))
 
     // Join to gene index data to detect unmapped gene/target ids
     val dfv = df
@@ -228,31 +235,26 @@ class EvidencePreparationPipeline(ss: SparkSession, config: Config)
               .otherwise(null)
           )
       )
+      .withColumn("is_valid", $"reason".isNull)
     assertSizesEqual(df, dfv, "Num evidence rows changed after join (expected = %s, actual = %s)")
-
-    // Save all invalid records and a count summary
-    this.save(
-      dfv.groupBy("sourceID", "reason").count(),
-      config.evidenceDiseaseIdValidationSummaryPath
-    )
-    this.save(dfv.filter(!$"reason".isNull), config.evidenceDiseaseIdValidationErrorsPath)
+    summarizeErrors(dfv, config.evidenceDiseaseIdValidationSummaryPath, config.evidenceDiseaseIdValidationErrorsPath)
 
     // Return only valid records and drop added fields
     val dfr = dfv
-      .filter($"reason".isNull)
-      .drop("reason", "efo_index:id")
+      .filter($"is_valid")
+      .drop("reason", "is_valid", "efo_index:id")
     assertSchemasEqual(df, dfr)
     dfr
   }
 
   def fixFields(df: DataFrame): DataFrame = {
     // TODO: catch everything in https://github.com/opentargets/data_pipeline/blob/329ff219f9510d137c7609478b05d358c9195579/mrtarget/common/EvidenceString.py#L153
+    ???
     //    dfv
     //      // Merge the new context into context struct
     //      .withStruct("context_new", "target_id_invalid_reason")
     //      .withColumn("context", struct($"context.*", $"context_new.*"))
     //      .drop("context_new")
-    ???
   }
 
   override def spec(): Spec = {
