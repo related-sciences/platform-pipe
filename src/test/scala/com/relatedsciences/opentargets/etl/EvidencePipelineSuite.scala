@@ -76,6 +76,8 @@ class EvidencePipelineSuite extends FunSuite with SparkSessionWrapper with DataF
     // for validation steps:
     // check that all target ids match ENSG_[0-9]
     // check that all disease ids match [something]_[0-9]
+    // check for bad target/disease id
+    // check for excluded biotype (and record for expression_atlas w/o excluded biotype)
   }
 
 }
