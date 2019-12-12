@@ -8,7 +8,7 @@ import org.scalatest.FunSuite
 case class Organ(name: String, count: Int)
 case class Disease(id: Int, name: String, organ: Organ)
 case class Drug(id: Int, name: String, alt: Array[String])
-case class Record(id: Int, drug: Drug, disease: Disease)
+case class DataRecord(id: Int, drug: Drug, disease: Disease)
 
 class DataFrameOpsSuite extends FunSuite with SparkSessionWrapper {
   import com.relatedsciences.opentargets.etl.pipeline.SparkImplicits._
@@ -50,8 +50,8 @@ class DataFrameOpsSuite extends FunSuite with SparkSessionWrapper {
     validate(df1, df2)
     validate(df1, df1.mutateColumns("disease.organ.count")(c => c - 1)) // Validate overload too
     validate(df1, Utilities.applyToDataset(df1, fn1))
-    assertResult(df1.as[Record].map(r => r.disease.organ.count).rdd.collect())(
-      df2.as[Record].map(r => r.disease.organ.count + 1).rdd.collect()
+    assertResult(df1.as[DataRecord].map(r => r.disease.organ.count).rdd.collect())(
+      df2.as[DataRecord].map(r => r.disease.organ.count + 1).rdd.collect()
     )
 
     // Validate mutation on top-level field
@@ -59,16 +59,16 @@ class DataFrameOpsSuite extends FunSuite with SparkSessionWrapper {
     val df3                   = df1.mutate(fn2)
     validate(df1, df3)
     validate(df1, Utilities.applyToDataset(df1, fn2))
-    assertResult(df1.as[Record].map(r => r.id).rdd.collect())(
-      df3.as[Record].map(r => r.id / 2).rdd.collect()
+    assertResult(df1.as[DataRecord].map(r => r.id).rdd.collect())(
+      df3.as[DataRecord].map(r => r.id / 2).rdd.collect()
     )
 
     // Validate mutation with typed dataset
-    val ds1 = df1.as[Record]
+    val ds1 = df1.as[DataRecord]
     val ds2 = Utilities.applyToDataset(ds1, fn1)
     validate(ds1, ds2)
-    assertResult(ds1.as[Record].map(r => r.disease.organ.count).rdd.collect())(
-      ds2.as[Record].map(r => r.disease.organ.count + 1).rdd.collect()
+    assertResult(ds1.as[DataRecord].map(r => r.disease.organ.count).rdd.collect())(
+      ds2.as[DataRecord].map(r => r.disease.organ.count + 1).rdd.collect()
     )
   }
 
