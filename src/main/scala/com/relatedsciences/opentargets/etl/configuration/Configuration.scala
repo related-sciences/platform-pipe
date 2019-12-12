@@ -14,7 +14,8 @@ object Configuration {
   case class PipelineEvidence(
       rawEvidenceDirName: String,
       geneExtractDirName: String,
-      efoExtractDirName: String
+      efoExtractDirName: String,
+      excludedBiotypes: Map[String, List[String]]
   )
   case class PipelineDecoratorConfig(enabled: Boolean)
   case class ExternalConfig(mrtargetData: URL, mrtargetEs: URL)

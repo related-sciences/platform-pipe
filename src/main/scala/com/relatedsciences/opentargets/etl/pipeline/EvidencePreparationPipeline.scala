@@ -1,13 +1,14 @@
 package com.relatedsciences.opentargets.etl.pipeline
 
 import java.net.URL
+
 import com.relatedsciences.opentargets.etl.configuration.Configuration.Config
 import com.relatedsciences.opentargets.etl.pipeline.JsonValidation.RecordValidator
 import com.relatedsciences.opentargets.etl.pipeline.Pipeline.Spec
-import com.relatedsciences.opentargets.etl.Common.{UNI_ID_ORG_PREFIX, ENS_ID_ORG_PREFIX}
+import com.relatedsciences.opentargets.etl.Common.{ENS_ID_ORG_PREFIX, UNI_ID_ORG_PREFIX}
 import com.typesafe.scalalogging.LazyLogging
 import org.apache.spark.sql.catalyst.ScalaReflection
-import org.apache.spark.sql.functions._
+import org.apache.spark.sql.functions.{when, _}
 import org.apache.spark.sql.types.StructType
 import org.apache.spark.sql.{Column, DataFrame, Dataset, SparkSession}
 
@@ -194,20 +195,21 @@ class EvidencePreparationPipeline(ss: SparkSession, config: Config)
   }
 
   def validateTargetIds(df: DataFrame): DataFrame = {
-    val dfg = getGeneIndexData.select($"id".as("gene_index:id"))
+    val dfg = getGeneIndexData.select("id", "biotype").addPrefix("gene_index:")
 
     // Join to gene index data to detect unmapped gene/target ids
     // TODO: biotype filter: https://github.com/opentargets/data_pipeline/blob/329ff219f9510d137c7609478b05d358c9195579/mrtarget/common/EvidenceString.py#L297
     // TODO: double check these: https://github.com/opentargets/data_pipeline/blob/329ff219f9510d137c7609478b05d358c9195579/mrtarget/common/EvidenceString.py#L334
+    val btlkp = typedLit(config.pipeline.evidence.excludedBiotypes)
     val dfv = df
       .join(dfg, df("target.id") === dfg("gene_index:id"), "left")
+      .withColumn("excluded_biotypes", btlkp($"sourceID"))
       .withColumn(
         "reason",
-        when($"target.id".isNull, "id_null")
-          .otherwise(
-            when($"gene_index:id".isNull, "id_not_found")
-              .otherwise(null)
-          )
+          when($"target.id".isNull, "id_null")
+            .when($"gene_index:id".isNull, "id_not_found")
+            .when(array_contains($"excluded_biotypes", $"gene_index:biotype"), "biotype_exclusion")
+            .otherwise(null)
       )
       .withColumn("is_valid", $"reason".isNull)
     assertSizesEqual(df, dfv, "Num evidence rows changed after join (expected = %s, actual = %s)")
@@ -216,7 +218,7 @@ class EvidencePreparationPipeline(ss: SparkSession, config: Config)
     // Return only valid records and drop added fields
     val dfr = dfv
       .filter($"is_valid")
-      .drop("reason", "is_valid", "gene_index:id")
+      .drop("reason", "excluded_biotypes", "is_valid", "gene_index:id", "gene_index:biotype")
     assertSchemasEqual(df, dfr)
     dfr
   }
@@ -230,10 +232,8 @@ class EvidencePreparationPipeline(ss: SparkSession, config: Config)
       .withColumn(
         "reason",
         when($"disease.id".isNull, "id_null")
-          .otherwise(
-            when($"efo_index:id".isNull, "id_not_found")
-              .otherwise(null)
-          )
+          .when($"efo_index:id".isNull, "id_not_found")
+          .otherwise(null)
       )
       .withColumn("is_valid", $"reason".isNull)
     assertSizesEqual(df, dfv, "Num evidence rows changed after join (expected = %s, actual = %s)")

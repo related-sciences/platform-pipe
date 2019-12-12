@@ -18,6 +18,10 @@ class EvidencePipelineSuite extends FunSuite with SparkSessionWrapper with DataF
   import ss.implicits._
   val logger: Logger = Logger.getLogger(getClass.getName)
 
+  test("config") {
+    println(TestUtils.primaryTestConfig)
+  }
+
   test("evidence pipeline results") {
     val config = TestUtils.primaryTestConfig
 
