@@ -7,6 +7,8 @@ import org.apache.spark.sql.functions.{col, struct}
 import org.apache.spark.sql.types.StructType
 import org.apache.spark.sql.{Encoders, Row}
 
+import scala.util.Try
+
 object SparkImplicits {
 
   implicit class DataFrameOps(df: DataFrame) {
@@ -55,24 +57,37 @@ object SparkImplicits {
       df.select(cols: _*)
     }
 
-    /**
-      * Move fields into a struct and remove from top-level
-      * @param name name of resulting struct
-      * @param cols columns to move
-      */
-    def withStruct(name: String, cols: String*): DataFrame = {
+    /** Move top-level columns into a struct */
+    private def createStruct(name: String, cols: String*)(df: DataFrame): DataFrame = {
       val other = df.columns.filter(c => !cols.contains(c)).map(col).toSeq
-      val inner = cols.map(c => df(c))
+      val inner = cols.map(c => df(c).as(c))
       df.select(other :+ struct(inner: _*).as(name): _*).drop(cols: _*)
     }
 
     /**
-      * Apply function to self
-      * @param f function to apply to self
+      * Move top-level fields into a struct
+      *
+      * The struct will be created if it does not already exist or if it does, the fields
+      * will be merged into it.  In all cases, the original fields to append are dropped.
+      *
+      * @param structName name of resulting struct
+      * @param cols columns to move
       */
-    def pipe(f: DataFrame => DataFrame): DataFrame = {
-      f(df)
+    def appendStruct(structName: String, cols: String*): DataFrame = {
+      if (df.columns.contains(structName)) {
+        // If the struct exists, create a temporary one with the desired columns and merge to original
+        val tmpName = "__" + structName + "__"
+        assert(!df.columns.contains(tmpName))
+        df
+          .transform(createStruct(tmpName, cols:_*))
+          .withColumn(structName, struct(col(structName + ".*"), col(tmpName + ".*")))
+          .drop(tmpName)
+      } else {
+        // If the struct does not exist, pack the fields into it and remove the old ones
+        df.transform(createStruct(structName, cols:_*))
+      }
     }
+
   }
 
 }

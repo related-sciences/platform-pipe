@@ -3,6 +3,7 @@ import java.nio.file.Paths
 
 import com.relatedsciences.opentargets.etl.configuration.Configuration.Config
 import com.relatedsciences.opentargets.etl.pipeline.{EvidencePreparationPipeline, PipelineState}
+import com.relatedsciences.opentargets.etl.schema.{DataSource, DataType}
 import org.apache.log4j.Logger
 import org.apache.spark.sql.Dataset
 import org.apache.spark.sql.functions.{col, length}
@@ -11,7 +12,10 @@ import org.scalatest.FunSuite
 /**
   * Test for end-to-end evidence pipeline validation
   *
-  * Expected results are computed by notebooks in notebooks/testing
+  * Expected results are computed by notebook at notebooks/testing/evidence-test-data-extractor.ipynb.
+  * Documentation for data that was not programmatically generated
+  * (in src/test/resources/pipeline_test/input/evidence_raw.json) can be found at
+  * src/test/resources/pipeline_test/README.md.
   */
 class EvidencePipelineSuite extends FunSuite with SparkSessionWrapper with DataFrameComparison {
 
@@ -29,6 +33,7 @@ class EvidencePipelineSuite extends FunSuite with SparkSessionWrapper with DataF
     val refs = state.references.map(v => v.name -> v.value).toMap
 
     var df = refs("parseEvidenceData").asInstanceOf[Dataset[_]]
+    val initialCt = df.count()
     assert(
       df.columns.length > 3,
       s"Evidence json did not parse into Spark schema correctly (columns found = ${df.columns}"
@@ -40,6 +45,7 @@ class EvidencePipelineSuite extends FunSuite with SparkSessionWrapper with DataF
     assertResult(0, "Ids should be 32 char md5")(df.filter(length($"id") =!= 32).count())
 
     df = refs("normalizeTargetIds").asInstanceOf[Dataset[_]]
+    assertResult(initialCt)(df.count)
     val idTypes =
       df.select(df("context.target_id_type")).distinct.map(_(0).toString).collect().toSet
     assertResult(Set("uniprot", "ensembl"))(idTypes)
@@ -69,9 +75,29 @@ class EvidencePipelineSuite extends FunSuite with SparkSessionWrapper with DataF
       getIdCt(Seq("ENSG00000073756", "ENSG00000169083"))
     )
 
-    // for validation steps:
-    // check that all target ids match ENSG_[0-9]
-    // check that all disease ids match [something]_[0-9]
+    df = refs("normalizeDiseaseIds").asInstanceOf[Dataset[_]]
+    assertResult(initialCt)(df.count)
+    // Check that other than the one id expected to be bad, all others match the usual (EFO|Orphanet|etc.)_[0-9]+ format
+    val invalidDiseaseIds = df
+        .filter(col("disease.id") =!= "BAD_EFO_ID")
+        .filter(!col("disease.id").rlike("^[a-zA-Z]+_[0-9]+$"))
+        .select("disease.id").collect().toList.map(_(0))
+    assertResult(0, s"Found invalid disease ids: ${invalidDiseaseIds}")(invalidDiseaseIds.size)
+
+    // Check expected existence of test records both pre and post validation
+    assertResult(1)(df.filter($"target.target_name" === "sim001-badtargetid").count)
+    assertResult(1)(df.filter($"target.target_name" === "sim002-badefoid").count)
+    assertResult(1)(df.filter($"target.target_name" === "sim003-excludedbiotype").count)
+    assertResult(1)(df.filter($"target.target_name" === "sim004-includedbiotype").count)
+    assertResult(1)(df.filter($"target.target_name" === "sim005-badsource").count)
+    df = refs("validateDataSources").asInstanceOf[Dataset[_]] // Result of final validation* step
+    assert(df.count() <= initialCt)
+    assertResult(0)(df.filter($"target.target_name" === "sim001-badtargetid").count)
+    assertResult(0)(df.filter($"target.target_name" === "sim002-badefoid").count)
+    assertResult(0)(df.filter($"target.target_name" === "sim003-excludedbiotype").count)
+    assertResult(0)(df.filter($"target.target_name" === "sim005-badsource").count)
+    // Check single fake record with non-filtered biotype still exists
+    assertResult(1)(df.filter($"target.target_name" === "sim004-includedbiotype").count)
   }
 
 }

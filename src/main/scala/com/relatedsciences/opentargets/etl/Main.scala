@@ -12,10 +12,10 @@ import java.nio.file.Paths
 import com.relatedsciences.opentargets.etl.configuration.Configuration.Config
 import com.typesafe.scalalogging.LazyLogging
 import org.apache.spark.sql.SparkSession
-import pureconfig._
-import pureconfig.generic.auto._
 import pureconfig.error.ConfigReaderFailures
 import scopt.OptionParser
+import pureconfig._
+import pureconfig.generic.auto._
 
 object Main extends LazyLogging {
   val progName: String = "ot-platform-pipe"
