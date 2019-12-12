@@ -18,10 +18,6 @@ class EvidencePipelineSuite extends FunSuite with SparkSessionWrapper with DataF
   import ss.implicits._
   val logger: Logger = Logger.getLogger(getClass.getName)
 
-  test("config") {
-    println(TestUtils.primaryTestConfig)
-  }
-
   test("evidence pipeline results") {
     val config = TestUtils.primaryTestConfig
 
@@ -33,6 +29,7 @@ class EvidencePipelineSuite extends FunSuite with SparkSessionWrapper with DataF
     val refs = state.references.map(v => v.name -> v.value).toMap
 
     var df = refs("parseEvidenceData").asInstanceOf[Dataset[_]]
+    val initialCt = df.count()
     assert(
       df.columns.length > 3,
       s"Evidence json did not parse into Spark schema correctly (columns found = ${df.columns}"
@@ -44,6 +41,7 @@ class EvidencePipelineSuite extends FunSuite with SparkSessionWrapper with DataF
     assertResult(0, "Ids should be 32 char md5")(df.filter(length($"id") =!= 32).count())
 
     df = refs("normalizeTargetIds").asInstanceOf[Dataset[_]]
+    assertResult(initialCt)(df.count)
     val idTypes =
       df.select(df("context.target_id_type")).distinct.map(_(0).toString).collect().toSet
     assertResult(Set("uniprot", "ensembl"))(idTypes)
@@ -73,11 +71,28 @@ class EvidencePipelineSuite extends FunSuite with SparkSessionWrapper with DataF
       getIdCt(Seq("ENSG00000073756", "ENSG00000169083"))
     )
 
-    // for validation steps:
-    // check that all target ids match ENSG_[0-9]
-    // check that all disease ids match [something]_[0-9]
-    // check for bad target/disease id
-    // check for excluded biotype (and record for expression_atlas w/o excluded biotype)
+    df = refs("normalizeDiseaseIds").asInstanceOf[Dataset[_]]
+    assertResult(initialCt)(df.count)
+    // Check that other than the one id expected to be bad, all others match the usual (EFO|Orphanet|etc.)_[0-9]+ format
+    val invalidDiseaseIds = df
+        .filter(col("disease.id") =!= "BAD_EFO_ID")
+        .filter(!col("disease.id").rlike("^[a-zA-Z]+_[0-9]+$"))
+        .select("disease.id").collect().toList.map(_(0))
+    assertResult(0, s"Found invalid disease ids: ${invalidDiseaseIds}")(invalidDiseaseIds.size)
+
+    // Validate that expected bad records are still present
+    assertResult(1)(df.filter($"target.id".endsWith("ENSG999999")).count)
+    assertResult(1)(df.filter($"disease.id".contains("BAD_EFO_ID")).count)
+    assertResult(1)(df.filter($"target.id".contains("ENSG00000240253") && $"sourceID" === "expression_atlas").count)
+    assertResult(1)(df.filter($"target.id".contains("ENSG00000169174") && $"sourceID" === "expression_atlas" && $"disease.id" === "EFO_0004267").count)
+
+    df = refs("validateDiseaseIds").asInstanceOf[Dataset[_]]
+    // Check that bad records are all gone after validation
+    assertResult(0)(df.filter($"target.id".endsWith("ENSG999999")).count)
+    assertResult(0)(df.filter($"disease.id".contains("BAD_EFO_ID")).count)
+    assertResult(0)(df.filter($"target.id".contains("ENSG00000240253") && $"sourceID" === "expression_atlas").count)
+    // Check single fake record with non-filtered biotype
+    assertResult(1)(df.filter($"target.id".contains("ENSG00000169174") && $"sourceID" === "expression_atlas" && $"disease.id" === "EFO_0004267").count)
   }
 
 }
