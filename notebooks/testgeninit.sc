@@ -44,3 +44,19 @@ lazy val GENE_MAP_1 = Map(
   "P35354" -> "ENSG00000073756",
   "P10275" -> "ENSG00000169083"
 )
+
+// These all have expression_atlas excluded biotypes
+// Found via:
+// ss.read.json(extractDir.resolve("gene.json").toString)
+// .filter($"biotype".isin(Seq(
+//     "IG_C_pseudogene", "IG_J_pseudogene", "IG_pseudogene", "IG_V_pseudogene", "polymorphic_pseudogene",
+//     "processed_pseudogene", "pseudogene", "rRNA", "rRNA_pseudogene", "snoRNA", "snRNA",
+//     "transcribed_processed_pseudogene", "transcribed_unitary_pseudogene",
+//     "transcribed_unprocessed_pseudogene", "TR_J_pseudogene", "TR_V_pseudogene",
+//     "unitary_pseudogene","unprocessed_pseudogene"
+// ):_*)).select("id", "biotype").show(10, false)
+lazy val GENE_SET_2 = List(
+  "ENSG00000240253", // "processed_pseudogene"
+  "ENSG00000270945", // "processed_pseudogene"
+  "ENSG00000197984"  // "transcribed_unprocessed_pseudogene"
+)
