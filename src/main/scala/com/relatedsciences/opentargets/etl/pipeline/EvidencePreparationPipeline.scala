@@ -3,6 +3,7 @@ package com.relatedsciences.opentargets.etl.pipeline
 import java.net.URL
 
 import com.relatedsciences.opentargets.etl.Common.{ENS_ID_ORG_PREFIX, UNI_ID_ORG_PREFIX}
+import com.relatedsciences.opentargets.etl.Utilities
 import com.relatedsciences.opentargets.etl.configuration.Configuration.Config
 import com.relatedsciences.opentargets.etl.pipeline.JsonValidation.RecordValidator
 import com.relatedsciences.opentargets.etl.pipeline.Pipeline.Spec
@@ -12,6 +13,8 @@ import org.apache.spark.sql.catalyst.ScalaReflection
 import org.apache.spark.sql.functions.{when, _}
 import org.apache.spark.sql.types.StructType
 import org.apache.spark.sql.{DataFrame, Dataset, SparkSession}
+
+import scala.io.Source
 
 case class ValidationResult(
     isValid: Boolean = false,
@@ -34,37 +37,17 @@ class EvidencePreparationPipeline(ss: SparkSession, config: Config)
 
   // Initialize static schema location from dynamic configuration --
   // is there a better way to do this that still results in a serializable Spark task?
-  { RecordValidator.url = Some(new URL(config.evidenceJsonSchema)) }
+  { RecordValidator.url = Some(new URL(config.dataResources.evidenceJsonSchema)) }
 
   lazy val validationResultSchema: StructType =
     ScalaReflection.schemaFor[ValidationResult].dataType.asInstanceOf[StructType]
-
-  def runEvidenceSchemaValidation(df: Dataset[String]): DataFrame = {
-    val validatorUdf =
-      udf((record: String) => RecordValidator.validate(record), validationResultSchema)
-    df.withColumn("validation", validatorUdf($"value"))
-      .select($"value", $"validation.*")
-      .withColumnRenamed("isValid", "is_valid")
-      // Save bad records as well as their frequencies by source and cause
-      .transform(summarizeValidationErrors(config.evidenceSchemaValidationSummaryPath,
-                                           config.evidenceSchemaValidationErrorsPath))
-      .filter($"is_valid")
-  }
-
-  def parseEvidenceData(df: DataFrame): DataFrame = {
-    ss.read
-      .json(df.select("value").as[String])
-      // Add source name to unique association fields as the identifier hash input
-      // See: https://github.com/opentargets/data_pipeline/blob/329ff219f9510d137c7609478b05d358c9195579/mrtarget/modules/Evidences.py#L190
-      .withColumn("id", md5(to_json(struct("unique_association_fields.*", "sourceID"))))
-  }
 
   /**
     * Load gene index export (currently from ES)
     *
     * Approx. 60.5k rows
     */
-  def getGeneIndexData: DataFrame = {
+  lazy val getGeneIndexData: DataFrame = {
     ss.read.json(config.geneDataPath)
   }
 
@@ -73,8 +56,29 @@ class EvidencePreparationPipeline(ss: SparkSession, config: Config)
     *
     * Approx. 15.6k rows
     */
-  def getEFOIndexData: DataFrame = {
+  lazy val getEFOIndexData: DataFrame = {
     ss.read.json(config.efoDataPath)
+  }
+
+  /**
+  * Load ECO score lookup mapping ECO URIs to static score values
+    *
+    * The file read should have a structure like this with no headers and fields [uri, code, score]:
+    * http://identifiers.org/eco/cttv_mapping_pipeline	cttv_mapping_pipeline	1.
+    * http://purl.obolibrary.org/obo/SO_0001621	NMD_transcript_variant	0.65
+    * http://purl.obolibrary.org/obo/SO_0002165	trinucleotide_repeat_expansion	1.
+    * ...
+    *
+    * At TOW, this mapping consists of 43 records.
+    * @return map of ECO URIs to score values (code is ignored)
+    */
+  def getECOScores: Map[String, Double] = {
+    Utilities.using(Source.fromURL(config.dataResources.ecoScores)) {
+      source => source.mkString
+        .split("\n")
+        .map(_.split("\t"))
+        .map(r => r(0) -> r(2).toDouble).toMap
+    }
   }
 
   /**
@@ -111,6 +115,27 @@ class EvidencePreparationPipeline(ss: SparkSession, config: Config)
       .option("header", "true")
       .csv(config.nonRefGeneDataPath)
       .as[NonReferenceGeneLookup]
+      .cache()
+  }
+
+  def runEvidenceSchemaValidation(df: Dataset[String]): DataFrame = {
+    val validatorUdf =
+      udf((record: String) => RecordValidator.validate(record), validationResultSchema)
+    df.withColumn("validation", validatorUdf($"value"))
+      .select($"value", $"validation.*")
+      .withColumnRenamed("isValid", "is_valid")
+      // Save bad records as well as their frequencies by source and cause
+      .transform(summarizeValidationErrors(config.evidenceSchemaValidationSummaryPath,
+                                           config.evidenceSchemaValidationErrorsPath))
+      .filter($"is_valid")
+  }
+
+  def parseEvidenceData(df: DataFrame): DataFrame = {
+    ss.read
+      .json(df.select("value").as[String])
+      // Add source name to unique association fields as the identifier hash input
+      // See: https://github.com/opentargets/data_pipeline/blob/329ff219f9510d137c7609478b05d358c9195579/mrtarget/modules/Evidences.py#L190
+      .withColumn("id", md5(to_json(struct("unique_association_fields.*", "sourceID"))))
   }
 
   def normalizeTargetIds(df: DataFrame): DataFrame = {
@@ -124,7 +149,6 @@ class EvidencePreparationPipeline(ss: SparkSession, config: Config)
     val dfn = getNonReferenceGeneLookup
       .toDF()
       .addPrefix("nonref:")
-      .cache()
       .dropDuplicates("nonref:alternate")
 
     val dfr = df
@@ -207,6 +231,56 @@ class EvidencePreparationPipeline(ss: SparkSession, config: Config)
       .appendStruct("context", "type_assignment")
   }
 
+  /**
+  * Enforce constraints on resource_score values based on fixed ECO code to score relationships
+    *
+    * Note that at TOW, the number of records updated by this routine is massive.  Of 1.7M evidence
+    * records, almost 400k correspond to genetic_association records and ALL of them end up being assigned
+    * new resource scores (about 100k b/c the original resource score is null and 300k because it is
+    * provided as the "pvalue" type and not "probability" type)
+    */
+  def normalizeResourceScores(df: DataFrame): DataFrame = {
+    // See https://github.com/opentargets/data_pipeline/blob/329ff219f9510d137c7609478b05d358c9195579/mrtarget/common/EvidenceString.py#L197
+    val normalize = $"type" === DataType.genetic_association.toString && $"evidence.gene2variant".isNotNull
+    val ecolkp = typedLit(getECOScores)
+    // Override resources scores only for ECO codes that are in the static score mapping (i.e. "enforce" them
+    // when known, otherwise leave them alone)
+    df
+      // Extract current resource score
+      .withColumn("resource_score_original", when(normalize,
+        coalesce($"evidence.gene2variant.resource_score.value", $"evidence.resource_score.value")
+      ))
+      // Get ECO URI for evidence
+      .withColumn("resource_score_eco_uri", when(normalize,
+        coalesce($"evidence.gene2variant.functional_consequence", $"evidence.evidence_codes".getItem(0))
+      ))
+      // Get expected score based on static URI -> score map
+      .withColumn("resource_score_expected", when(normalize, ecolkp($"resource_score_eco_uri")))
+      // Add flag for whether or not this "enforcement" is applicable
+      .withColumn("resource_score_enforced_by_eco_code", $"resource_score_expected".isNotNull)
+      // Add flag to indicate what the value was changed to, if any change occurs
+      .withColumn("resource_score_enforced_update",
+        when($"resource_score_enforced_by_eco_code",
+            when($"resource_score_original".isNull, lit("value_null"))
+            .when($"resource_score_original" =!= $"resource_score_expected", lit("value_unequal"))
+            .otherwise(lit("value_equal"))
+        )
+      )
+      // Leave the resource score as is unless an override was applicable
+      .withColumn("evidence.gene2variant.resource_score",
+        // This struct must match the field order of the original and specify all of them
+        when($"resource_score_enforced_by_eco_code", struct(
+          $"evidence.gene2variant.resource_score.method".as("method"),
+          lit("probability").as("type"),
+          $"resource_score_expected".as("value")
+        ))
+        .otherwise($"evidence.gene2variant.resource_score")
+      )
+      // Drop some intermediate fields, move others to retained context
+      .drop("resource_score_original", "resource_score_eco_uri", "resource_score_expected")
+      .appendStruct("context", "resource_score_enforced_by_eco_code", "resource_score_enforced_update")
+  }
+
   def validateTargetIds(df: DataFrame): DataFrame = {
     val dfg = getGeneIndexData.select("id", "biotype").addPrefix("gene_index:")
 
@@ -282,7 +356,6 @@ class EvidencePreparationPipeline(ss: SparkSession, config: Config)
 
   override def spec(): Spec = {
     // TODO: Add id hash to unparseable/invalid records? (https://github.com/opentargets/data_pipeline/blob/329ff219f9510d137c7609478b05d358c9195579/mrtarget/modules/Evidences.py#L132)
-    // TODO: Validate data source against datasource_to_datatypes? (https://github.com/opentargets/data_pipeline/blob/329ff219f9510d137c7609478b05d358c9195579/mrtarget/modules/Evidences.py#L158)
     Pipeline
       .Builder(config)
       .start("getEvidenceRawData", () => ss.read.textFile(config.rawEvidencePath))
@@ -291,6 +364,7 @@ class EvidencePreparationPipeline(ss: SparkSession, config: Config)
       .andThen("normalizeTargetIds", normalizeTargetIds)
       .andThen("normalizeDiseaseIds", normalizeDiseaseIds)
       .andThen("normalizeDataSources", normalizeDataSources)
+      .andThen("normalizeResourceScores", normalizeResourceScores)
       .andThen("validateTargetIds", validateTargetIds)
       .andThen("validateDiseaseIds", validateDiseaseIds)
       .andThen("validateDataSources", validateDataSources)

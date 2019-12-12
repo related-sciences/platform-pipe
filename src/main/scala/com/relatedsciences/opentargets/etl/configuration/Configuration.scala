@@ -25,6 +25,8 @@ object Configuration {
 
   case class DataSource(name: String, `type`: String)
 
+  case class DataResources(localDir: String, evidenceJsonSchema: String, ecoScores: String)
+
   case class Pipeline(
                        scoring: PipelineScoring,
                        evidence: PipelineEvidence,
@@ -36,10 +38,9 @@ object Configuration {
                      sparkUri: String,
                      inputDir: String,
                      outputDir: String,
-                     resourceDir: String,
                      logLevel: String,
-                     evidenceJsonSchema: String,
                      dataSources: List[DataSource],
+                     dataResources: DataResources,
                      externalConfig: ExternalConfig,
                      pipeline: Pipeline
                    ) {
@@ -68,7 +69,7 @@ object Configuration {
     lazy val efoDataPath: String =
       Paths.get(inputDir).resolve(pipeline.evidence.efoExtractDirName).toString
     lazy val nonRefGeneDataPath: String =
-      Paths.get(resourceDir).resolve("genes_with_non_reference_ensembl_ids_lkp.tsv").toString
+      Paths.get(dataResources.localDir).resolve("genes_with_non_reference_ensembl_ids_lkp.tsv").toString
 
     // Post evidence-prep
     lazy val preparedEvidencePath: String =
