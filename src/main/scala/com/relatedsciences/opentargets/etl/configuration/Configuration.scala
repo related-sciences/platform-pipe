@@ -31,7 +31,8 @@ object Configuration {
                        scoring: PipelineScoring,
                        evidence: PipelineEvidence,
                        decorators: Map[String, PipelineDecoratorConfig],
-                       enableAssertions: Boolean
+                       enableAssertions: Boolean,
+                       enableSummaries: Boolean
                      )
 
   case class Config(

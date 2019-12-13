@@ -15,7 +15,7 @@ docker run --user $(id -u):$(id -g) --rm -ti \
 -v $HOME/repos/rs/ot-scoring:/home/$USER/repos/ot-scoring \
 -v $HOME/repos/ot/data_pipeline:/home/$USER/repos/data_pipeline \
 -v /data/disk1/ot/dev:/home/$USER/data/ot \
--p 8888:8888 -p 4040:4040 \
+-p 8888:8888 -p 4040:4040 -p 8080:8080 \
 ot-client
 
 # On localhost:
@@ -24,7 +24,7 @@ docker run --user $(id -u):$(id -g) --rm -ti \
 -v $HOME/repos/ot/data_pipeline:/home/$USER/repos/data_pipeline \
 -v $HOME/data/ot:/home/$USER/data/ot \
 -e PROJECT_JAR_PATH=/home/$USER/repos/ot-scoring/target/scala-2.12/ot-scoring.jar \
--p 8888:8888 -p 4040:4040 \
+-p 8888:8888 -p 4040:4040 -p 8080:8080 \
 ot-client
 ```
 

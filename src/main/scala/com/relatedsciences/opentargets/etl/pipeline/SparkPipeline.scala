@@ -53,8 +53,10 @@ abstract class SparkPipeline(ss: SparkSession, config: Config)
   }
 
   def summarizeValidationErrors(summaryPath: String, errorsPath: String)(df: DataFrame): DataFrame = {
-    save(df.groupBy("sourceID", "reason").count(), summaryPath)
-    save(df.filter(!col("is_valid")), errorsPath)
+    if (config.pipeline.enableSummaries) {
+      save(df.groupBy("sourceID", "reason").count(), summaryPath)
+      save(df.filter(!col("is_valid")), errorsPath)
+    }
     df
   }
 
