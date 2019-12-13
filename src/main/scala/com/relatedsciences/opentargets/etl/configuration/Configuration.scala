@@ -62,6 +62,8 @@ object Configuration {
       Paths.get(outputDir).resolve("errors/evidence_data_source_validation_summary.parquet").toString
     lazy val evidenceDataSourceValidationErrorsPath: String =
       Paths.get(outputDir).resolve("errors/evidence_data_source_validation_errors.parquet").toString
+    lazy val preparedRawEvidencePath: String =
+      Paths.get(outputDir).resolve("evidence_raw.parquet").toString
 
     // Entity data paths
     lazy val geneDataPath: String =

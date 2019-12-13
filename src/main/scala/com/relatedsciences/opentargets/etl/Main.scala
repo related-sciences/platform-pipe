@@ -69,15 +69,6 @@ object Main extends LazyLogging {
             .text(command.enumEntry.opts.text)
       )
 
-      //      opt[Map[String, String]]("kwargs")
-      //        .valueName("k1=v1,k2=v2...")
-      //        .action((x, c) => c.copy(kwargs = x))
-      //        .text("other arguments")
-      //
-      //      cmd("distance-nearest")
-      //        .action((_, c) => c.copy(command = Some("distance-nearest")))
-      //        .text("generate distance nearest based dataset")
-
       note(entryText)
 
       override def showUsageOnError = true

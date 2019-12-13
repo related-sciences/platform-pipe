@@ -149,8 +149,8 @@ class ScoringCalculationPipeline(ss: SparkSession, config: Config)
       .andThen("computeSourceScores", computeSourceScores)
       .andThen("saveEvidenceScores", saveEvidenceScores)
       .andThen("aggregateSourceScores", aggregateSourceScores)
-      .andThen("saveSourceScores", this.save(_, config.sourceScorePath))
+      .andThen("saveSourceScores", save(_, config.sourceScorePath))
       .andThen("aggregateAssociationScores", aggregateAssociationScores)
-      .stop("saveAssociationScores", this.save(_, config.associationScorePath))
+      .stop("saveAssociationScores", save(_, config.associationScorePath))
   }
 }

@@ -288,7 +288,6 @@ class EvidencePreparationPipeline(ss: SparkSession, config: Config)
     val btlkp = typedLit(config.pipeline.evidence.excludedBiotypes)
 
     // Join to gene index data to detect unmapped gene/target ids and apply biotype filter
-    // TODO: double check these: https://github.com/opentargets/data_pipeline/blob/329ff219f9510d137c7609478b05d358c9195579/mrtarget/common/EvidenceString.py#L334
     df.join(dfg, df("target.id") === dfg("gene_index:id"), "left")
       .withColumn("excluded_biotypes", btlkp($"sourceID"))
       .withColumn(
@@ -345,7 +344,9 @@ class EvidencePreparationPipeline(ss: SparkSession, config: Config)
   }
 
   def fixFields(df: DataFrame): DataFrame = {
-    // TODO: catch everything else in https://github.com/opentargets/data_pipeline/blob/329ff219f9510d137c7609478b05d358c9195579/mrtarget/common/EvidenceString.py#L153
+    // TODO: Remove url prefixes: https://github.com/opentargets/data_pipeline/blob/329ff219f9510d137c7609478b05d358c9195579/mrtarget/common/EvidenceString.py#L229
+    // TODO: Parse on DB versions: https://github.com/opentargets/data_pipeline/blob/329ff219f9510d137c7609478b05d358c9195579/mrtarget/common/EvidenceString.py#L160
+    // TODO: Aggregate evidence codes: https://github.com/opentargets/data_pipeline/blob/329ff219f9510d137c7609478b05d358c9195579/mrtarget/common/EvidenceString.py#L239
     ???
   }
 
@@ -363,6 +364,6 @@ class EvidencePreparationPipeline(ss: SparkSession, config: Config)
       .andThen("validateTargetIds", validateTargetIds)
       .andThen("validateDiseaseIds", validateDiseaseIds)
       .andThen("validateDataSources", validateDataSources)
-      .end("end")
+      .stop("savePreparedEvidence", save(_, config.preparedRawEvidencePath))
   }
 }

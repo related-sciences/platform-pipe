@@ -60,7 +60,7 @@ class ScoringPreparationPipeline(ss: SparkSession, config: Config)
       .Builder(config)
       .start("getRawEvidence", getRawEvidence _)
       .andThen("prepareDiseaseIds", prepareDiseaseIds)
-      .stop("savePreprocessed", this.save(_, config.preparedEvidencePath))
+      .stop("savePreprocessed", save(_, config.preparedEvidencePath))
   }
 
 }
