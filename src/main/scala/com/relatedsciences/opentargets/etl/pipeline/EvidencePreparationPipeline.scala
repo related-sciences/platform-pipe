@@ -35,8 +35,8 @@ class EvidencePreparationPipeline(ss: SparkSession, config: Config)
   import com.relatedsciences.opentargets.etl.pipeline.SparkImplicits._
   import ss.implicits._
 
-  // Initialize static schema location from dynamic configuration --
-  // is there a better way to do this that still results in a serializable Spark task?
+  // Initialize static schema location from dynamic configuration
+  // TODO: Is there a better way to do this that still results in a serializable Spark task?
   { RecordValidator.url = Some(new URL(config.dataResources.evidenceJsonSchema)) }
 
   lazy val validationResultSchema: StructType =
@@ -258,7 +258,7 @@ class EvidencePreparationPipeline(ss: SparkSession, config: Config)
       .withColumn("resource_score_expected", when(normalize, ecolkp($"resource_score_eco_uri")))
       // Add flag for whether or not this "enforcement" is applicable
       .withColumn("resource_score_enforced_by_eco_code", $"resource_score_expected".isNotNull)
-      // Add flag to indicate what the value was changed to, if any change occurs
+      // Add flag to indicate why the value was changed, if any change occurs at all
       .withColumn("resource_score_enforced_update",
         when($"resource_score_enforced_by_eco_code",
             when($"resource_score_original".isNull, lit("value_null"))
@@ -266,16 +266,16 @@ class EvidencePreparationPipeline(ss: SparkSession, config: Config)
             .otherwise(lit("value_equal"))
         )
       )
-      // Leave the resource score as is unless an override was applicable
-      .withColumn("evidence.gene2variant.resource_score",
-        // This struct must match the field order of the original and specify all of them
-        when($"resource_score_enforced_by_eco_code", struct(
-          $"evidence.gene2variant.resource_score.method".as("method"),
-          lit("probability").as("type"),
-          $"resource_score_expected".as("value")
-        ))
-        .otherwise($"evidence.gene2variant.resource_score")
-      )
+      // Leave the resource score as is unless an override was applicable (in which case redefine key fields)
+      .mutate(c => {
+        when($"resource_score_enforced_by_eco_code", c.toString match {
+          case "evidence.gene2variant.resource_score.value" => $"resource_score_expected".as("value")
+          case "evidence.gene2variant.resource_score.type" => lit("probability").as("type")
+          case "evidence.gene2variant.resource_score.method.description" =>
+            lit("Score assigned manually from evidence code").as("description")
+          case _ => c
+        }).otherwise(c)
+      })
       // Drop some intermediate fields, move others to retained context
       .drop("resource_score_original", "resource_score_eco_uri", "resource_score_expected")
       .appendStruct("context", "resource_score_enforced_by_eco_code", "resource_score_enforced_update")
@@ -288,7 +288,6 @@ class EvidencePreparationPipeline(ss: SparkSession, config: Config)
     val btlkp = typedLit(config.pipeline.evidence.excludedBiotypes)
 
     // Join to gene index data to detect unmapped gene/target ids and apply biotype filter
-    // TODO: double check these: https://github.com/opentargets/data_pipeline/blob/329ff219f9510d137c7609478b05d358c9195579/mrtarget/common/EvidenceString.py#L334
     df.join(dfg, df("target.id") === dfg("gene_index:id"), "left")
       .withColumn("excluded_biotypes", btlkp($"sourceID"))
       .withColumn(
@@ -345,13 +344,10 @@ class EvidencePreparationPipeline(ss: SparkSession, config: Config)
   }
 
   def fixFields(df: DataFrame): DataFrame = {
-    // TODO: catch everything in https://github.com/opentargets/data_pipeline/blob/329ff219f9510d137c7609478b05d358c9195579/mrtarget/common/EvidenceString.py#L153
+    // TODO: Remove url prefixes: https://github.com/opentargets/data_pipeline/blob/329ff219f9510d137c7609478b05d358c9195579/mrtarget/common/EvidenceString.py#L229
+    // TODO: Parse on DB versions: https://github.com/opentargets/data_pipeline/blob/329ff219f9510d137c7609478b05d358c9195579/mrtarget/common/EvidenceString.py#L160
+    // TODO: Aggregate evidence codes: https://github.com/opentargets/data_pipeline/blob/329ff219f9510d137c7609478b05d358c9195579/mrtarget/common/EvidenceString.py#L239
     ???
-    //    dfv
-    //      // Merge the new context into context struct
-    //      .withStruct("context_new", "target_id_invalid_reason")
-    //      .withColumn("context", struct($"context.*", $"context_new.*"))
-    //      .drop("context_new")
   }
 
   override def spec(): Spec = {
@@ -368,6 +364,6 @@ class EvidencePreparationPipeline(ss: SparkSession, config: Config)
       .andThen("validateTargetIds", validateTargetIds)
       .andThen("validateDiseaseIds", validateDiseaseIds)
       .andThen("validateDataSources", validateDataSources)
-      .end("end")
+      .stop("savePreparedEvidence", save(_, config.preparedRawEvidencePath))
   }
 }
