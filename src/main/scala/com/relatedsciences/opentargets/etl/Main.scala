@@ -1,11 +1,3 @@
-/**
-  * Scoring pipeline execution for spark-submit
-  * Usage:
-  * /usr/spark-2.4.4/bin/spark-submit \
-  * --driver-memory 12g \
-  * --class "com.relatedsciences.opentargets.pipeline.Main" \
-  * target/scala-2.12/ot-scoring_2.12-0.1.jar
-  */
 package com.relatedsciences.opentargets.etl
 import java.nio.file.Paths
 

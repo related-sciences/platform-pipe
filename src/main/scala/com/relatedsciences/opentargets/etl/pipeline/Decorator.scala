@@ -49,9 +49,9 @@ object Decorator extends LazyLogging {
     override def apply[A](op: Operation[A]): Operation[A] = new Operation[A] {
       val scope: Seq[String] = op.scope
       def run: S => A = (s: S) => {
-        logger.info(s"Executing operation '${op.scope.last}'")
+        logger.info(s"Constructing operation '${op.scope.last}'")
         val o = op.run(s)
-        logger.info(s"Operation '${op.scope.last}' complete")
+        logger.info(s"Construction for operation '${op.scope.last}' complete")
         o
       }
     }

@@ -13,6 +13,7 @@ import org.apache.spark.sql.catalyst.ScalaReflection
 import org.apache.spark.sql.functions.{when, _}
 import org.apache.spark.sql.types.StructType
 import org.apache.spark.sql.{DataFrame, Dataset, SparkSession}
+import org.apache.spark.storage.StorageLevel
 
 import scala.io.Source
 
@@ -124,6 +125,7 @@ class EvidencePreparationPipeline(ss: SparkSession, config: Config)
     df.withColumn("validation", validatorUdf($"value"))
       .select($"value", $"validation.*")
       .withColumnRenamed("isValid", "is_valid")
+      //.persist(StorageLevel.DISK_ONLY)
       // Save bad records as well as their frequencies by source and cause
       .transform(summarizeValidationErrors(config.evidenceSchemaValidationSummaryPath,
                                            config.evidenceSchemaValidationErrorsPath))
@@ -136,6 +138,7 @@ class EvidencePreparationPipeline(ss: SparkSession, config: Config)
       // Add source name to unique association fields as the identifier hash input
       // See: https://github.com/opentargets/data_pipeline/blob/329ff219f9510d137c7609478b05d358c9195579/mrtarget/modules/Evidences.py#L190
       .withColumn("id", md5(to_json(struct("unique_association_fields.*", "sourceID"))))
+      //.persist(StorageLevel.DISK_ONLY)
   }
 
   def normalizeTargetIds(df: DataFrame): DataFrame = {
