@@ -32,6 +32,9 @@ class EvidencePipelineSuite extends FunSuite with SparkSessionWrapper with DataF
     new EvidencePreparationPipeline(ss, config).spec().run(state)
     val refs = state.references.map(v => v.name -> v.value).toMap
 
+    // --------------
+    // Record Parsing
+    // --------------
     var df = refs("parseEvidenceData").asInstanceOf[Dataset[_]]
     val initialCt = df.count()
     assert(
@@ -44,6 +47,9 @@ class EvidencePipelineSuite extends FunSuite with SparkSessionWrapper with DataF
     assertResult(0, "Ids should be non-null")(df.filter($"id".isNull).count())
     assertResult(0, "Ids should be 32 char md5")(df.filter(length($"id") =!= 32).count())
 
+    // --------------------
+    // Target Normalization
+    // --------------------
     df = refs("normalizeTargetIds").asInstanceOf[Dataset[_]]
     assertResult(initialCt)(df.count)
     val idTypes =
@@ -75,6 +81,9 @@ class EvidencePipelineSuite extends FunSuite with SparkSessionWrapper with DataF
       getIdCt(Seq("ENSG00000073756", "ENSG00000169083"))
     )
 
+    // ---------------------
+    // Disease Normalization
+    // ---------------------
     df = refs("normalizeDiseaseIds").asInstanceOf[Dataset[_]]
     assertResult(initialCt)(df.count)
     // Check that other than the one id expected to be bad, all others match the usual (EFO|Orphanet|etc.)_[0-9]+ format
@@ -84,18 +93,58 @@ class EvidencePipelineSuite extends FunSuite with SparkSessionWrapper with DataF
         .select("disease.id").collect().toList.map(_(0))
     assertResult(0, s"Found invalid disease ids: ${invalidDiseaseIds}")(invalidDiseaseIds.size)
 
+    // ----------------------------
+    // Resource Score Normalization
+    // ----------------------------
+    df = refs("normalizeResourceScores").asInstanceOf[Dataset[_]]
+    def nrs_getrsvalue(targetName: String): Double = {
+      df.filter($"target.target_name" === targetName)
+        .select("evidence.gene2variant.resource_score.value")
+        .take(1).map(_(0)).toSeq.lift(0) match {
+          case Some(v) => v.asInstanceOf[Double]
+          case _ => throw new IllegalArgumentException(s"Record for $targetName not found")
+        }
+    }
+    def nrs_getupdate(targetName: String): String = {
+      df.filter($"target.target_name" === targetName)
+        .select("context.resource_score_enforced_update")
+        .take(1).map(_(0)).toSeq.lift(0) match {
+          case Some(v) => v.asInstanceOf[String]
+          case _ => throw new IllegalArgumentException(s"Record for $targetName not found")
+        }
+    }
+
+    assertResult(.5)(nrs_getrsvalue("sim006-ecoscore-rsdiff"))
+    assertResult("value_unequal")(nrs_getupdate("sim006-ecoscore-rsdiff"))
+    assertResult(.5)(nrs_getrsvalue("sim007-ecoscore-rsnull"))
+    assertResult("value_null")(nrs_getupdate("sim007-ecoscore-rsnull"))
+    assertResult(.5)(nrs_getrsvalue("sim008-ecoscore-rsequal"))
+    assertResult("value_equal")(nrs_getupdate("sim008-ecoscore-rsequal"))
+    assertResult(.3)(nrs_getrsvalue("sim009-ecoscore-badecoid"))
+    assertResult(null.asInstanceOf[String])(nrs_getupdate("sim009-ecoscore-badecoid"))
+
+    // ----------------
+    // Record Filtering
+    // ----------------
     // Check expected existence of test records both pre and post validation
-    assertResult(1)(df.filter($"target.target_name" === "sim001-badtargetid").count)
-    assertResult(1)(df.filter($"target.target_name" === "sim002-badefoid").count)
-    assertResult(1)(df.filter($"target.target_name" === "sim003-excludedbiotype").count)
-    assertResult(1)(df.filter($"target.target_name" === "sim004-includedbiotype").count)
-    assertResult(1)(df.filter($"target.target_name" === "sim005-badsource").count)
+    val valTargets = Seq(
+      "sim001-badtargetid",
+      "sim002-badefoid",
+      "sim003-excludedbiotype",
+      "sim004-includedbiotype",
+      "sim005-badsource"
+    )
+    def val_getct(targetName: String): Long =  df.filter($"target.target_name" === targetName).count
+    for (targetName <- valTargets) {
+      assertResult(1, s"Record for $targetName not found")(val_getct(targetName))
+    }
+
+    // Pull post-validation data and check that expected records have been dropped
     df = refs("validateDataSources").asInstanceOf[Dataset[_]] // Result of final validation* step
     assert(df.count() <= initialCt)
-    assertResult(0)(df.filter($"target.target_name" === "sim001-badtargetid").count)
-    assertResult(0)(df.filter($"target.target_name" === "sim002-badefoid").count)
-    assertResult(0)(df.filter($"target.target_name" === "sim003-excludedbiotype").count)
-    assertResult(0)(df.filter($"target.target_name" === "sim005-badsource").count)
+    for (targetName <- valTargets.filter(_ != "sim004-includedbiotype")) {
+      assertResult(0, s"Record for $targetName not found")(val_getct(targetName))
+    }
     // Check single fake record with non-filtered biotype still exists
     assertResult(1)(df.filter($"target.target_name" === "sim004-includedbiotype").count)
   }
