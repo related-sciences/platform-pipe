@@ -93,6 +93,17 @@ class EvidencePipelineSuite extends FunSuite with SparkSessionWrapper with DataF
         .select("disease.id").collect().toList.map(_(0))
     assertResult(0, s"Found invalid disease ids: ${invalidDiseaseIds}")(invalidDiseaseIds.size)
 
+    // ---------------------------
+    // Evidence Code Normalization
+    // ---------------------------
+    df = refs("normalizeEvidenceCodes").asInstanceOf[Dataset[_]]
+    val ecoCodes = df.filter($"target.target_name" === "sim010-ecocodeagg")
+      .select("evidence.evidence_codes").take(1)(0).getSeq[String](0).sortWith(_ < _)
+    val ecoSrc = df.filter($"target.target_name" === "sim010-ecocodeagg")
+      .select("context.evidence_codes_source").take(1)(0).getString(0)
+    assertResult(Seq("ECO_0000205", "PheWAS"))(ecoCodes)
+    assertResult("v2d")(ecoSrc)
+
     // ----------------------------
     // Resource Score Normalization
     // ----------------------------
