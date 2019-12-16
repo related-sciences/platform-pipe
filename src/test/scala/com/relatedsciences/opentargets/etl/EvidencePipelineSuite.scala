@@ -149,4 +149,5 @@ class EvidencePipelineSuite extends FunSuite with SparkSessionWrapper with DataF
     assertResult(1)(df.filter($"target.target_name" === "sim004-includedbiotype").count)
   }
 
+
 }

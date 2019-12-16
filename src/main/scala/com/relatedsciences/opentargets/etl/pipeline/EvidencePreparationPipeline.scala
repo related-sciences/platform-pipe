@@ -7,13 +7,12 @@ import com.relatedsciences.opentargets.etl.Utilities
 import com.relatedsciences.opentargets.etl.configuration.Configuration.Config
 import com.relatedsciences.opentargets.etl.pipeline.JsonValidation.RecordValidator
 import com.relatedsciences.opentargets.etl.pipeline.Pipeline.Spec
-import com.relatedsciences.opentargets.etl.schema.{DataSource, DataType}
+import com.relatedsciences.opentargets.etl.schema.DataType
 import com.typesafe.scalalogging.LazyLogging
 import org.apache.spark.sql.catalyst.ScalaReflection
-import org.apache.spark.sql.functions.{when, _}
+import org.apache.spark.sql.functions._
 import org.apache.spark.sql.types.StructType
 import org.apache.spark.sql.{DataFrame, Dataset, SparkSession}
-import org.apache.spark.storage.StorageLevel
 
 import scala.io.Source
 
@@ -30,6 +29,23 @@ case class ValidationResult(
 case class UniProtGeneLookup(ensembl_gene_id: String, uniprot_id: String)
 case class NonReferenceGeneLookup(reference: String, alternate: String)
 
+/**
+* Raw evidence preparation pipeline.
+  *
+  * This pipeline will:
+  * 1. Read and validate raw evidence json strings
+  * 2. Parse json out into a Spark schema
+  * 3. Normalize target, disease, and evidence ids/codes (as well as several other fields)
+  * 4. Validate target/disease codes (ensuring they exist and remove evidence records for those that do not)
+  * 5. Optionally, save summaries of records by validation status as well as all records that fail these checks (in full)
+  *
+  * Shelved tasks from data_pipeline; these may be necessary at some point but for now they appear superfluous:
+  * - Add id hash to unparseable/invalid records (https://github.com/opentargets/data_pipeline/blob/329ff219f9510d137c7609478b05d358c9195579/mrtarget/modules/Evidences.py#L132)
+  * - Attempt float parse on DB versions (https://github.com/opentargets/data_pipeline/blob/329ff219f9510d137c7609478b05d358c9195579/mrtarget/common/EvidenceString.py#L160)
+  *
+  * @param ss
+  * @param config
+  */
 class EvidencePreparationPipeline(ss: SparkSession, config: Config)
     extends SparkPipeline(ss, config)
     with LazyLogging {
@@ -138,7 +154,6 @@ class EvidencePreparationPipeline(ss: SparkSession, config: Config)
       // Add source name to unique association fields as the identifier hash input
       // See: https://github.com/opentargets/data_pipeline/blob/329ff219f9510d137c7609478b05d358c9195579/mrtarget/modules/Evidences.py#L190
       .withColumn("id", md5(to_json(struct("unique_association_fields.*", "sourceID"))))
-      //.persist(StorageLevel.DISK_ONLY)
   }
 
   def normalizeTargetIds(df: DataFrame): DataFrame = {
@@ -162,9 +177,11 @@ class EvidencePreparationPipeline(ss: SparkSession, config: Config)
           .when($"target.id".startsWith(UNI_ID_ORG_PREFIX), "uniprot")
           .otherwise("other")
       )
-      // Assume last URL component contains identifiers
+      // Assume last URL component contains identifiers and other relevant values
       // See https://github.com/opentargets/data_pipeline/blob/329ff219f9510d137c7609478b05d358c9195579/mrtarget/common/EvidenceString.py#L275
-      .mutateColumns("target.id")(Functions.getUrlBasename)
+      // and https://github.com/opentargets/data_pipeline/blob/329ff219f9510d137c7609478b05d358c9195579/mrtarget/common/EvidenceString.py#L229
+      .mutateColumns("target.id", "target.target_type", "target.activity")(Functions.getUrlBasename)
+
 
     // Resolve UniProt target identifiers
     val dfru = dfr
@@ -184,13 +201,11 @@ class EvidencePreparationPipeline(ss: SparkSession, config: Config)
           .otherwise(c)
       })
       .transform(df => df.drop(df.columns.filter(_.startsWith("uniprot:")): _*))
-      .transform(
-        assertSizesEqual(dfr, "Num evidence rows changed after join (expected = %s, actual = %s)"))
 
     // Resolve "non-reference" target identifiers
     val dff = dfru
     // Join to reference/alternate genes on the alternate id
-      .join(dfn, dfru("target.id") === dfn("nonref:alternate"), "left")
+      .join(broadcast(dfn), dfru("target.id") === dfn("nonref:alternate"), "left")
       .withColumn(
         "target_id_nonrefalt",
         when(
@@ -204,8 +219,6 @@ class EvidencePreparationPipeline(ss: SparkSession, config: Config)
           .otherwise(c)
       })
       .transform(df => df.drop(df.columns.filter(_.startsWith("nonref:")): _*))
-      .transform(
-        assertSizesEqual(dfru, "Num evidence rows changed after join (expected = %s, actual = %s)"))
 
     dff
     // Pack the fields for transformation context into a separate struct
@@ -232,6 +245,52 @@ class EvidencePreparationPipeline(ss: SparkSession, config: Config)
                        DataType.genetic_association.toString))
       .withColumn("type", coalesce($"type_assignment", $"type"))
       .appendStruct("context", "type_assignment")
+  }
+
+  /**
+  * Aggregate evidence codes from several possible fields (depending on record type) and set
+    * final code list in primary evidence code field (evidence.evidence_codes)
+    *
+    * This will also parse codes from URLs and apply any extant normalizations that
+    * haven't yet been moved upstream.
+    */
+  def normalizeEvidenceCodes(df: DataFrame): DataFrame = {
+    // See: https://github.com/opentargets/data_pipeline/blob/329ff219f9510d137c7609478b05d358c9195579/mrtarget/common/EvidenceString.py#L239
+    df
+      // Identify which field the evidence codes will be aggregated from
+      .withColumn(
+        "evidence_codes_source",
+        when($"evidence.evidence_codes".isNotNull, lit("base"))
+          .when($"evidence.variant2disease".isNotNull, lit("v2d"))
+          .when($"evidence.target2drug".isNotNull, lit("t2d"))
+          .when($"evidence.biological_model".isNotNull, lit("biom"))
+      )
+      // Concatenate all codes into a single array
+      .withColumn(
+        "evidence_codes_urls",
+          when($"evidence_codes_source" === "base", $"evidence.evidence_codes")
+            .when($"evidence_codes_source" === "v2d", concat(
+              coalesce($"evidence.variant2disease.evidence_codes", array()),
+              coalesce($"evidence.gene2variant.evidence_codes", array())
+            ))
+            .when($"evidence_codes_source" === "t2d", concat(
+              coalesce($"evidence.target2drug.evidence_codes", array()),
+              coalesce($"evidence.drug2clinic.evidence_codes", array())
+            ))
+            .when($"evidence_codes_source" === "biom",
+              coalesce($"evidence.biological_model.evidence_codes", array())
+            )
+            .otherwise(array())
+      )
+      // Re-assign evidence codes as de-duplicated codes parsed from URLs
+      .mutate(c =>
+        if (c.toString == "evidence.evidence_codes")
+        array_distinct(Functions.parseEvidenceCodesFromUrls("evidence_codes_urls"))
+        else c
+      )
+      // Drop now unnecessary intermediate fields and move those to keep into context
+      .drop("evidence_codes_urls")
+      .appendStruct("context", "evidence_codes_source")
   }
 
   /**
@@ -285,13 +344,15 @@ class EvidencePreparationPipeline(ss: SparkSession, config: Config)
   }
 
   def validateTargetIds(df: DataFrame): DataFrame = {
-    val dfg = getGeneIndexData.select("id", "biotype").addPrefix("gene_index:")
+    val dfg = getGeneIndexData.select("id", "biotype")
+      .addPrefix("gene_index:")
+      .dropDuplicates("gene_index:id")
 
     // Load map of data_source -> array[excluded_biotype]
     val btlkp = typedLit(config.pipeline.evidence.excludedBiotypes)
 
     // Join to gene index data to detect unmapped gene/target ids and apply biotype filter
-    df.join(dfg, df("target.id") === dfg("gene_index:id"), "left")
+    df.join(broadcast(dfg), df("target.id") === dfg("gene_index:id"), "left")
       .withColumn("excluded_biotypes", btlkp($"sourceID"))
       .withColumn(
         "reason",
@@ -301,8 +362,6 @@ class EvidencePreparationPipeline(ss: SparkSession, config: Config)
         // otherwise null
       )
       .withColumn("is_valid", $"reason".isNull)
-      .transform(
-        assertSizesEqual(df, "Num evidence rows changed after join (expected = %s, actual = %s)"))
       .transform(summarizeValidationErrors(config.evidenceTargetIdValidationSummaryPath,
                                            config.evidenceTargetIdValidationErrorsPath))
       .filter($"is_valid")
@@ -312,9 +371,10 @@ class EvidencePreparationPipeline(ss: SparkSession, config: Config)
 
   def validateDiseaseIds(df: DataFrame): DataFrame = {
     val dfd = getEFOIndexData.select($"id".as("efo_index:id"))
+        .dropDuplicates("efo_index:id")
 
     // Join to gene index data to detect unmapped gene/target ids
-    df.join(dfd, df("disease.id") === dfd("efo_index:id"), "left")
+    df.join(broadcast(dfd), df("disease.id") === dfd("efo_index:id"), "left")
       .withColumn(
         "reason",
         when($"disease.id".isNull, "id_null")
@@ -322,8 +382,6 @@ class EvidencePreparationPipeline(ss: SparkSession, config: Config)
           .otherwise(null)
       )
       .withColumn("is_valid", $"reason".isNull)
-      .transform(
-        assertSizesEqual(df, "Num evidence rows changed after join (expected = %s, actual = %s)"))
       .transform(summarizeValidationErrors(config.evidenceDiseaseIdValidationSummaryPath,
                                            config.evidenceDiseaseIdValidationErrorsPath))
       .filter($"is_valid")
@@ -346,15 +404,7 @@ class EvidencePreparationPipeline(ss: SparkSession, config: Config)
       .transform(assertSchemasEqual(df))
   }
 
-  def fixFields(df: DataFrame): DataFrame = {
-    // TODO: Remove url prefixes: https://github.com/opentargets/data_pipeline/blob/329ff219f9510d137c7609478b05d358c9195579/mrtarget/common/EvidenceString.py#L229
-    // TODO: Parse on DB versions: https://github.com/opentargets/data_pipeline/blob/329ff219f9510d137c7609478b05d358c9195579/mrtarget/common/EvidenceString.py#L160
-    // TODO: Aggregate evidence codes: https://github.com/opentargets/data_pipeline/blob/329ff219f9510d137c7609478b05d358c9195579/mrtarget/common/EvidenceString.py#L239
-    ???
-  }
-
   override def spec(): Spec = {
-    // TODO: Add id hash to unparseable/invalid records? (https://github.com/opentargets/data_pipeline/blob/329ff219f9510d137c7609478b05d358c9195579/mrtarget/modules/Evidences.py#L132)
     Pipeline
       .Builder(config)
       .start("getEvidenceRawData", () => ss.read.textFile(config.rawEvidencePath))
@@ -363,6 +413,7 @@ class EvidencePreparationPipeline(ss: SparkSession, config: Config)
       .andThen("normalizeTargetIds", normalizeTargetIds)
       .andThen("normalizeDiseaseIds", normalizeDiseaseIds)
       .andThen("normalizeDataSources", normalizeDataSources)
+      .andThen("normalizeEvidenceCodes", normalizeEvidenceCodes)
       .andThen("normalizeResourceScores", normalizeResourceScores)
       .andThen("validateTargetIds", validateTargetIds)
       .andThen("validateDiseaseIds", validateDiseaseIds)
