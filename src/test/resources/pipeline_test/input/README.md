@@ -29,6 +29,9 @@ The simulated examples have the following changes:
 - line 9 - ECO score enforcement - sim009-ecoscore-badecoid
     - Same as 6 with value changed to .3 and ECO code at gene2variant.functional_consequence changed 
     to SO_0000000 to test that unmapped ECO codes result in no override  
+- line 10 - ECO code aggregation - sim010-ecocodeagg
+    - Same as 6 with nothing changed, as it already as gene2variant and variant2disease evidence_codes
+    to be asserted against expectation (should result in codes 'ECO_0000205' and 'PheWAS')
   
 
 In each of the above, a field is added at target.target_name (as it is not constrained by the json schema)

@@ -101,6 +101,7 @@ object Main extends LazyLogging {
       case _ => logger.error("Failed to specify a command to run (try --help)")
     }
 
+    logger.info(s"Application complete")
     println("Application complete")
   }
 

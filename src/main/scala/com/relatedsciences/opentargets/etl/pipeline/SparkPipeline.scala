@@ -5,6 +5,7 @@ import com.relatedsciences.opentargets.etl.pipeline.Pipeline.SpecProvider
 import com.typesafe.scalalogging.LazyLogging
 import org.apache.spark.sql.{Column, DataFrame, DataFrameWriter, Row, SparkSession}
 import org.apache.spark.sql.functions.col
+import org.apache.spark.storage.StorageLevel
 
 abstract class SparkPipeline(ss: SparkSession, config: Config)
     extends SpecProvider
@@ -27,15 +28,6 @@ abstract class SparkPipeline(ss: SparkSession, config: Config)
     df
   }
 
-  def assertSizesEqual(sourceDF: DataFrame, msg: String)(df: DataFrame): DataFrame = {
-    if (config.pipeline.enableAssertions) {
-      val expected = sourceDF.count()
-      val actual   = df.count()
-      assert(expected == actual, msg.format(expected, actual))
-    }
-    df
-  }
-
   def assertSchemasEqual(sourceDF: DataFrame, msg: String = "")(df: DataFrame): DataFrame = {
     if (config.pipeline.enableAssertions) {
       // Is there a better way to do this?
@@ -54,6 +46,10 @@ abstract class SparkPipeline(ss: SparkSession, config: Config)
 
   def summarizeValidationErrors(summaryPath: String, errorsPath: String)(df: DataFrame): DataFrame = {
     if (config.pipeline.enableSummaries) {
+      // Make sure to persist the data frame first as not doing so leads to re-computation
+      // for each of the following operations, as well any others downstream
+      // * At TOW, this reduces computation time from ~3 hrs to ~45 mins
+      df.persist(StorageLevel.DISK_ONLY)
       save(df.groupBy("sourceID", "reason").count(), summaryPath)
       save(df.filter(!col("is_valid")), errorsPath)
     }
