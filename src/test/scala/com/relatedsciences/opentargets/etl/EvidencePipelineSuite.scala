@@ -101,7 +101,7 @@ class EvidencePipelineSuite extends FunSuite with SparkSessionWrapper with DataF
       .select("evidence.evidence_codes").take(1)(0).getSeq[String](0).sortWith(_ < _)
     val ecoSrc = df.filter($"target.target_name" === "sim010-ecocodeagg")
       .select("context.evidence_codes_source").take(1)(0).getString(0)
-    assertResult(Seq("ECO_0000205", "PheWAS"))(ecoCodes)
+    assertResult(Seq("ECO_0000205", "PheWAS", "SO_0001060"))(ecoCodes)
     assertResult("v2d")(ecoSrc)
 
     // ----------------------------

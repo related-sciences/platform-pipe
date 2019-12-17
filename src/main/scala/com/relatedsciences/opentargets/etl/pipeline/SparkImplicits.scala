@@ -2,12 +2,8 @@ package com.relatedsciences.opentargets.etl.pipeline
 
 import com.relatedsciences.opentargets.etl.Utilities
 import org.apache.spark.sql.catalyst.encoders.{ExpressionEncoder, RowEncoder}
-import org.apache.spark.sql.{Column, DataFrame, SparkSession}
 import org.apache.spark.sql.functions.{col, struct}
-import org.apache.spark.sql.types.StructType
-import org.apache.spark.sql.{Encoders, Row}
-
-import scala.util.Try
+import org.apache.spark.sql.{Column, DataFrame, Row}
 
 object SparkImplicits {
 
@@ -78,13 +74,12 @@ object SparkImplicits {
         // If the struct exists, create a temporary one with the desired columns and merge to original
         val tmpName = "__" + structName + "__"
         assert(!df.columns.contains(tmpName))
-        df
-          .transform(createStruct(tmpName, cols:_*))
+        df.transform(createStruct(tmpName, cols: _*))
           .withColumn(structName, struct(col(structName + ".*"), col(tmpName + ".*")))
           .drop(tmpName)
       } else {
         // If the struct does not exist, pack the fields into it and remove the old ones
-        df.transform(createStruct(structName, cols:_*))
+        df.transform(createStruct(structName, cols: _*))
       }
     }
 

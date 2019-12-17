@@ -1,7 +1,7 @@
 package com.relatedsciences.opentargets.etl.pipeline
 
-import org.apache.spark.sql.Column
-import org.apache.spark.sql.functions.{element_at, expr, split}
+import org.apache.spark.sql.{Column, DataFrame}
+import org.apache.spark.sql.functions.{element_at, expr, md5, split, struct, to_json, col}
 
 object Functions {
 
@@ -82,5 +82,29 @@ object Functions {
         | end)
         |""".stripMargin.format(col)
     )
+  }
+
+  /**
+  * Add record id as MD5 of json representation of unique association fields
+    *
+    * Note: A side effect of this function includes redefining the unique_association_fields column
+    * to precisely represent what was used to construct the id field.
+    * @param name name of resulting id column (default "id")
+    * @param df evidence dataset with at least `unique_association_fields` and `sourceID` columns
+    */
+  def addEvidenceRecordId(name: String = "id")(df: DataFrame): DataFrame = {
+    // See: https://github.com/opentargets/data_pipeline/blob/329ff219f9510d137c7609478b05d358c9195579/mrtarget/modules/Evidences.py#L190
+    val fields = df
+      .select("unique_association_fields.*").columns.toSeq
+      .filter(_ != "datasource") :+ "sourceID"
+    val cols = fields.sortWith(_ < _).map(c =>
+      if (c != "sourceID") col("unique_association_fields." + c).as(c)
+      else col("sourceID").as("datasource")
+    )
+    df
+      // Re-define UAF with data source (and ensure sorting of struct fields)
+      .withColumn("unique_association_fields", struct(cols:_*))
+      // Generate id as md5 of key-sorted json
+      .withColumn(name, md5(to_json(col("unique_association_fields"))))
   }
 }

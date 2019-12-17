@@ -141,7 +141,6 @@ class EvidencePreparationPipeline(ss: SparkSession, config: Config)
     df.withColumn("validation", validatorUdf($"value"))
       .select($"value", $"validation.*")
       .withColumnRenamed("isValid", "is_valid")
-      //.persist(StorageLevel.DISK_ONLY)
       // Save bad records as well as their frequencies by source and cause
       .transform(summarizeValidationErrors(config.evidenceSchemaValidationSummaryPath,
                                            config.evidenceSchemaValidationErrorsPath))
@@ -149,11 +148,10 @@ class EvidencePreparationPipeline(ss: SparkSession, config: Config)
   }
 
   def parseEvidenceData(df: DataFrame): DataFrame = {
-    ss.read
-      .json(df.select("value").as[String])
-      // Add source name to unique association fields as the identifier hash input
-      // See: https://github.com/opentargets/data_pipeline/blob/329ff219f9510d137c7609478b05d358c9195579/mrtarget/modules/Evidences.py#L190
-      .withColumn("id", md5(to_json(struct("unique_association_fields.*", "sourceID"))))
+    // Infer schema from json strings
+    ss.read.json(df.select("value").as[String])
+      // Add record ID as hash of unique association fields
+      .transform(Functions.addEvidenceRecordId("id"))
   }
 
   def normalizeTargetIds(df: DataFrame): DataFrame = {
@@ -271,7 +269,11 @@ class EvidencePreparationPipeline(ss: SparkSession, config: Config)
           when($"evidence_codes_source" === "base", $"evidence.evidence_codes")
             .when($"evidence_codes_source" === "v2d", concat(
               coalesce($"evidence.variant2disease.evidence_codes", array()),
-              coalesce($"evidence.gene2variant.evidence_codes", array())
+              coalesce($"evidence.gene2variant.evidence_codes", array()),
+              // Note that this is actually from "get_extended_evidence" for some reason:
+              // https://github.com/opentargets/data_pipeline/blob/329ff219f9510d137c7609478b05d358c9195579/mrtarget/common/EvidenceString.py#L455
+              when($"evidence.gene2variant.functional_consequence".isNull, array())
+                  .otherwise(array($"evidence.gene2variant.functional_consequence"))
             ))
             .when($"evidence_codes_source" === "t2d", concat(
               coalesce($"evidence.target2drug.evidence_codes", array()),
