@@ -2,8 +2,7 @@ package com.relatedsciences.opentargets.etl
 import java.nio.file.Paths
 
 import com.relatedsciences.opentargets.etl.configuration.Configuration.Config
-import com.relatedsciences.opentargets.etl.pipeline.{EvidencePreparationPipeline, PipelineState}
-import com.relatedsciences.opentargets.etl.schema.{DataSource, DataType}
+import com.relatedsciences.opentargets.etl.pipeline.{EvidencePreparationPipeline, PipelineState, ScoringCalculationPipeline, ScoringPreparationPipeline}
 import org.apache.log4j.Logger
 import org.apache.spark.sql.Dataset
 import org.apache.spark.sql.functions.{col, length}
@@ -17,7 +16,7 @@ import org.scalatest.FunSuite
   * (in src/test/resources/pipeline_test/input/evidence_raw.json) can be found at
   * src/test/resources/pipeline_test/README.md.
   */
-class EvidencePipelineSuite extends FunSuite with SparkSessionWrapper with DataFrameComparison {
+class PipelineSuite extends FunSuite with SparkSessionWrapper with DataFrameComparison {
 
   import ss.implicits._
   val logger: Logger = Logger.getLogger(getClass.getName)
@@ -158,6 +157,70 @@ class EvidencePipelineSuite extends FunSuite with SparkSessionWrapper with DataF
     }
     // Check single fake record with non-filtered biotype still exists
     assertResult(1)(df.filter($"target.target_name" === "sim004-includedbiotype").count)
+  }
+
+  def checkScores(
+                   fields: Seq[String],
+                   actualPath: String,
+                   expectedPath: String,
+                   scoreType: String
+                 ): Unit = {
+    val cols = fields.map(col)
+    // Read in actual and expected data with same row and column order
+    val dfa = ss.read.parquet(actualPath).select(cols: _*).orderBy(cols: _*)
+    val dfe = ss.read.json(expectedPath).select(cols: _*).orderBy(cols: _*)
+    logger.info(
+      s"Comparing $scoreType scores for ${dfa.count()} actual rows, ${dfe.count()} expected rows"
+    )
+    assert(!dfa.isEmpty)
+    assert(!dfe.isEmpty)
+    assertDataFrameEquals(dfa, dfe, tol = epsilon)
+  }
+
+  /**
+    * Verify that that the "assocation" scores aggregated to the target + disease level are equivalent
+    */
+  def checkAssocationScores(config: Config): Unit = {
+    checkScores(
+      Seq("target_id", "disease_id", "score"),
+      config.associationScorePath,
+      TestUtils.TEST_RESOURCE_DIR
+        .resolve(Paths.get("pipeline_test", "expected", "association_scores.json"))
+        .toString,
+      "association"
+    )
+  }
+
+  /**
+    * Verify that that the "source" scores aggregated to the target + disease + source level are equivalent
+    */
+  def checkSourceScores(config: Config): Unit = {
+    checkScores(
+      Seq("target_id", "disease_id", "source_id", "score"),
+      config.sourceScorePath,
+      TestUtils.TEST_RESOURCE_DIR
+        .resolve(Paths.get("pipeline_test", "expected", "source_scores.json"))
+        .toString,
+      "source"
+    )
+  }
+
+  test("scoring pipeline results") {
+    val config = TestUtils.primaryTestConfig
+
+    // Read in the raw evidence data exported for a few select targets and
+    // run the full scoring pipeline on it
+    logger.info(s"Beginning full pipeline test")
+    val state = new PipelineState
+    new ScoringPreparationPipeline(ss, config).spec().run(state)
+    new ScoringCalculationPipeline(ss, config).spec().run(state)
+
+    // Check that aggregations to different levels are equivalent to verified values (from OT)
+    logger.info(s"Checking association scores")
+    checkAssocationScores(config)
+
+    logger.info(s"Checking source scores")
+    checkSourceScores(config)
   }
 
 

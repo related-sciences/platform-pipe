@@ -10,12 +10,15 @@ case class Disease(id: Int, name: String, organ: Organ)
 case class Drug(id: Int, name: String, alt: Array[String])
 case class DataRecord(id: Int, drug: Drug, disease: Disease)
 
-class DataFrameOpsSuite extends FunSuite with SparkSessionWrapper {
+case class RecL2(v1: Option[List[Int]], v2: Option[String])
+case class RecL1(v1: Option[List[Int]], v2: Option[RecL2])
+case class RecL0(id: Int, name: Option[String], s1: Option[RecL1])
+
+class DataFrameOpsSuite extends FunSuite with SparkSessionWrapper with DataFrameComparison {
   import com.relatedsciences.opentargets.etl.pipeline.SparkImplicits._
   import ss.implicits._
 
   test("struct packing") {
-    case class IS(v1: Int, v2: Double)
     val df = Seq(
       (1, "x", 1.0, List("a", "b")),
       (2, "y", 2.0, List("x", "y"))
@@ -59,6 +62,29 @@ class DataFrameOpsSuite extends FunSuite with SparkSessionWrapper {
     assertResult(Array("f1", "f2", "f3", "f4"))(df4.select("obj.*").columns)
   }
 
+  test("inner struct nullability") {
+    // This should ensure that nested structs remain null following recursive manipulation, if already null
+    val df = Seq(
+      RecL0(1, Some("x"), Some(RecL1(Some(List(1, 2)), Some(RecL2(Some(List(1,2)), Some("x")))))),
+      RecL0(2, Some("y"), Some(RecL1(Some(List(1, 2)), None))),
+      RecL0(3, None, None)
+    ).toDF
+    //df.printSchema
+    //root
+    //|-- id: integer (nullable = false)
+    //|-- name: string (nullable = true)
+    //|-- s1: struct (nullable = true)
+    //|    |-- v1: array (nullable = true)
+    //|    |    |-- element: integer (containsNull = false)
+    //|    |-- v2: struct (nullable = true)
+    //|    |    |-- v1: array (nullable = true)
+    //|    |    |    |-- element: integer (containsNull = false)
+    //|    |    |-- v2: string (nullable = true)
+
+    val dfm = df.mutate(PartialFunction.empty)
+    assertDataFrameEquals(dfm, df)
+  }
+
   test("basic nested struct mutation") {
     val rows = Seq(
       (1, Drug(1, "drug1", Array("x", "y")), Disease(1, "disease1", Organ("heart", 2))),
@@ -71,24 +97,24 @@ class DataFrameOpsSuite extends FunSuite with SparkSessionWrapper {
     val df1 = rows.toDF("id", "drug", "disease")
 
     def validate[T](actual: Dataset[T], expected: Dataset[T]) = {
-      assertResult(expected.schema.toString)(actual.schema.toString)
+      assertResult(expected.schema)(actual.schema)
       assertResult(expected.count())(actual.count())
     }
 
-    val fn1: Column => Column                    = c => if (c.toString == "disease.organ.count") c - 1 else c
+    val fn1: PartialFunction[String, Column] = { case "disease.organ.count" => $"disease.organ.count" - 1 }
     implicit val encoder: ExpressionEncoder[Row] = RowEncoder(df1.schema)
 
     // Validate mutation through implicits and underlying static method
     val df2 = df1.mutate(fn1)
     validate(df1, df2)
-    validate(df1, df1.mutateColumns("disease.organ.count")(c => c - 1)) // Validate overload too
+    validate(df1, df1.mutateColumns("disease.organ.count")(c => col(c) - 1)) // Validate overload too
     validate(df1, Utilities.applyToDataset(df1, fn1))
     assertResult(df1.as[DataRecord].map(r => r.disease.organ.count).rdd.collect())(
       df2.as[DataRecord].map(r => r.disease.organ.count + 1).rdd.collect()
     )
 
     // Validate mutation on top-level field
-    val fn2: Column => Column = c => if (c.toString == "id") c * 2 else c
+    val fn2: PartialFunction[String, Column] = { case "id" => $"id" * 2 }
     val df3                   = df1.mutate(fn2)
     validate(df1, df3)
     validate(df1, Utilities.applyToDataset(df1, fn2))
@@ -115,27 +141,27 @@ class DataFrameOpsSuite extends FunSuite with SparkSessionWrapper {
     val df1 = ss.read.json(json.split("\n").toSeq.toDS)
     assertResult(2L)(df1.count())
 
+    // Test noop mutation for schema and value equality
+    assertDataFrameEquals(df1.mutate(PartialFunction.empty), df1)
+
     // For both of the above records, the value at this path is an array<struct<lit_id: string>>
     // with the value [<lit_id: "http://europepmc.org/abstract/MED/28179366"] (only one element).
     // Mutate that value to only contain the last part of the url:
-    val df2 = df1.mutate(
-      c =>
-        if (c.toString == "evidence.provenance_type.literature.references")
-          array(struct(element_at(split(element_at(c, 1)("lit_id"), "/"), -1)))
-        else c
-    )
+    val df2 = df1.mutate({
+      case "evidence.provenance_type.literature.references" => array(struct(element_at(
+        split(element_at($"evidence.provenance_type.literature.references", 1)("lit_id"), "/"),
+        -1)))
+    })
     val actual = df2
       .select($"evidence.provenance_type.literature.references".getItem(0).getField("lit_id"))
       .collect()(0)(0)
     assertResult("28179366")(actual)
-    assertResult(df1.schema.toString)(df2.schema.toString)
+    assertResult(df1.schema)(df2.schema)
 
     // In the second record, disease.id was removed manually so test that mutations at that level work with nullable values
-    val df3 = df1.mutate(
-      c =>
-        if (c.toString == "disease.id") element_at(split(c, "/"), -1)
-        else c
-    )
+    val df3 = df1.mutate({
+      case "disease.id" => element_at(split($"disease.id", "/"), -1)
+    })
     val actual2 = df3.select($"disease.id").collect().map(_(0)).toSeq
     assertResult(Seq("EFO_1000233", null))(actual2)
   }

@@ -10,7 +10,7 @@ import com.relatedsciences.opentargets.etl.pipeline.Pipeline.Spec
 import com.relatedsciences.opentargets.etl.schema.DataType
 import com.typesafe.scalalogging.LazyLogging
 import org.apache.spark.sql.catalyst.ScalaReflection
-import org.apache.spark.sql.functions._
+import org.apache.spark.sql.functions.{lit, _}
 import org.apache.spark.sql.types.StructType
 import org.apache.spark.sql.{DataFrame, Dataset, SparkSession}
 
@@ -196,7 +196,7 @@ class EvidencePreparationPipeline(ss: SparkSession, config: Config)
       // Replace the target id with whatever value it matched to
       .mutateColumns("target.id")(c => {
         when($"target_id_uniprot".isNotNull, $"uniprot:ensembl_gene_id")
-          .otherwise(c)
+          .otherwise(col(c))
       })
       .transform(df => df.drop(df.columns.filter(_.startsWith("uniprot:")): _*))
 
@@ -214,7 +214,7 @@ class EvidencePreparationPipeline(ss: SparkSession, config: Config)
       // Use the "reference" id for a matched alternate id if possible, otherwise leave the id alone
       .mutateColumns("target.id")(c => {
         when($"target_id_nonrefalt".isNotNull, $"nonref:reference")
-          .otherwise(c)
+          .otherwise(col(c))
       })
       .transform(df => df.drop(df.columns.filter(_.startsWith("nonref:")): _*))
 
@@ -285,11 +285,9 @@ class EvidencePreparationPipeline(ss: SparkSession, config: Config)
             .otherwise(array())
       )
       // Re-assign evidence codes as de-duplicated codes parsed from URLs
-      .mutate(c =>
-        if (c.toString == "evidence.evidence_codes")
-        array_distinct(Functions.parseEvidenceCodesFromUrls("evidence_codes_urls"))
-        else c
-      )
+      .mutate({
+        case "evidence.evidence_codes" => array_distinct(Functions.parseEvidenceCodesFromUrls("evidence_codes_urls"))
+      })
       // Drop now unnecessary intermediate fields and move those to keep into context
       .drop("evidence_codes_urls")
       .appendStruct("context", "evidence_codes_source")
@@ -331,14 +329,17 @@ class EvidencePreparationPipeline(ss: SparkSession, config: Config)
         )
       )
       // Leave the resource score as is unless an override was applicable (in which case redefine key fields)
-      .mutate(c => {
-        when($"resource_score_enforced_by_eco_code", c.toString match {
-          case "evidence.gene2variant.resource_score.value" => $"resource_score_expected".as("value")
-          case "evidence.gene2variant.resource_score.type" => lit("probability").as("type")
-          case "evidence.gene2variant.resource_score.method.description" =>
-            lit("Score assigned manually from evidence code").as("description")
-          case _ => c
-        }).otherwise(c)
+      .mutate({
+        case "evidence.gene2variant.resource_score" => {
+          when(!$"resource_score_enforced_by_eco_code", col("evidence.gene2variant.resource_score"))
+          .otherwise(struct(
+            struct(
+              lit("Score assigned manually from evidence code").as("description")
+            ).as("method"),
+            lit("probability").as("type"),
+            $"resource_score_expected".as("value")
+          ))
+        }
       })
       // Drop some intermediate fields, move others to retained context
       .drop("resource_score_original", "resource_score_eco_uri", "resource_score_expected")
