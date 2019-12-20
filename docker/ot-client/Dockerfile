@@ -101,7 +101,7 @@ RUN wget --quiet https://repo.anaconda.com/miniconda/Miniconda3-4.7.12-Linux-x86
 RUN curl -L -o sbt.deb https://dl.bintray.com/sbt/debian/sbt-1.3.3.deb && dpkg -i sbt.deb
 
 # Shell Utilities
-RUN apt-get update && apt-get -y install htop vim
+RUN apt-get update && apt-get -y install htop vim procps
 RUN echo "N" | apt-get install sudo
 
 # Ammonite (for Scala 2.12)
@@ -132,6 +132,10 @@ RUN SCALA_VERSION=2.12.8 ALMOND_VERSION=0.9.0 && \
         -o almond && \
     ./almond --install --metabrowse true \
     --extra-repository https://jitpack.io
+# While somewhat redundant to the coursier arguments above, install a manually defined
+# kernel with the same launcher arguments AND JVM arguments, which cannot be specified
+# to the install script 
+COPY kernel-almond.json /home/$USERNAME/.local/share/jupyter/kernels/scala/kernel.json
 
 WORKDIR /home/$USERNAME
 RUN mkdir repos data
