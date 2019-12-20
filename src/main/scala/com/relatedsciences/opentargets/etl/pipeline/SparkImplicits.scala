@@ -19,9 +19,9 @@ object SparkImplicits {
       * @param fn function to apply to each column; should return the column itself if no update desired
       * @example
       *          // Multiply int value by 10 within 2 level struct {contact: person: {age: int}}}
-      *          df.mutate(c => if (c.toString == "contact.person.age") c * 10 else c)
+      *          df.mutate({ case "contact.person.age" => col("contact.person.age") * 10 })
       */
-    def mutate(fn: Column => Column): DataFrame = {
+    def mutate(fn: PartialFunction[String, Column]): DataFrame = {
       // Pass encoder explicitly, per syntactic expansion on context bound to Encoder in applyToDataset
       // See: https://stackoverflow.com/questions/40692691/how-to-pass-encoder-as-parameter-to-dataframes-as-method
       // * Compilation kept failing with unfound encoder regardless of ss.implicits or df.sparkSession.implicits import
@@ -35,9 +35,9 @@ object SparkImplicits {
       * @param columns column paths (possibly nested, e.g. Set("person.age")) to apply mutation to
       * @param fn function to apply to each column provided
       */
-    def mutateColumns(columns: String*)(fn: Column => Column): DataFrame = {
+    def mutateColumns(columns: String*)(fn: String => Column): DataFrame = {
       val cols = columns.toSet
-      mutate(c => if (cols.contains(c.toString)) fn(c) else c)
+      mutate({ case c: String if cols.contains(c.toString) => fn(c)})
     }
 
     /**

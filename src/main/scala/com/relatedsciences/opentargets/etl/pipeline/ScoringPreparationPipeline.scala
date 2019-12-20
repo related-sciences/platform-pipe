@@ -20,6 +20,7 @@ class ScoringPreparationPipeline(ss: SparkSession, config: Config)
     val resourceDataFields = Fields.allColumns.toList
     ss.read
       .json(config.evidenceExtractPath)
+      .dropDuplicates("id")
       .select(
         $"target.id".as("target_id"),
         $"private.efo_codes".as("efo_codes"),

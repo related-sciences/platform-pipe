@@ -30,8 +30,7 @@ abstract class SparkPipeline(ss: SparkSession, config: Config)
 
   def assertSchemasEqual(sourceDF: DataFrame, msg: String = "")(df: DataFrame): DataFrame = {
     if (config.pipeline.enableAssertions) {
-      // Is there a better way to do this?
-      val equal = sourceDF.schema.toString == df.schema.toString
+      val equal = sourceDF.schema == df.schema
       if (!equal) {
         logger.error(s"[schema assertion error] Schema for data frame 1:\n")
         sourceDF.printSchema

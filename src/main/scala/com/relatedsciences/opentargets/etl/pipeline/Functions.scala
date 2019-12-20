@@ -7,15 +7,15 @@ object Functions {
 
   /**
     * Return last component of a URL path */
-  def getUrlBasename(col: Column): Column = {
-    element_at(split(col, "/"), -1)
+  def getUrlBasename(column: String): Column = {
+    element_at(split(col(column), "/"), -1)
   }
 
   /**
     * Convert disease identifier URL to code
-    * @param col string field containing URL
+    * @param column string field containing URL
     */
-  def parseDiseaseIdFromUrl(col: Column): Column = {
+  def parseDiseaseIdFromUrl(column: String): Column = {
 
     /*
     This is supposed to be a port of
@@ -35,14 +35,14 @@ object Functions {
      */
     // For now, to maintain with consistency with data_pipeline, even though it appears to be out-of-date,
     // don't actually do anything other than get URL basename since the python should be equivalent to that
-    getUrlBasename(col)
+    getUrlBasename(column)
   }
 
   /**
     * Extract evidence codes from URLs
-    * @param col name of array field containing multiple URLs
+    * @param column name of array field containing multiple URLs
     */
-  def parseEvidenceCodesFromUrls(col: String): Column = {
+  def parseEvidenceCodesFromUrls(column: String): Column = {
     /*
     This is supposed to be a port of
     https://github.com/opentargets/data_pipeline/blob/329ff219f9510d137c7609478b05d358c9195579/mrtarget/common/EvidenceString.py#L256
@@ -80,7 +80,7 @@ object Functions {
         |   then regexp_replace(element_at(split(v, "/"), -1), "ECO:", "ECO_")
         | else element_at(split(v, "/"), -1)
         | end)
-        |""".stripMargin.format(col)
+        |""".stripMargin.format(column)
     )
   }
 

@@ -7,7 +7,7 @@ import org.yaml.snakeyaml.Yaml
 import java.util.{Map => JMap}
 
 import org.apache.spark.sql.{Column, Dataset, Encoder}
-import org.apache.spark.sql.functions.{col, struct}
+import org.apache.spark.sql.functions.{col, struct, when}
 import org.apache.spark.sql.types.StructType
 
 object Utilities {
@@ -75,10 +75,10 @@ object Utilities {
     * - https://stackoverflow.com/questions/51329926/renaming-columns-recursively-in-a-netsted-structure-in-spark
     *
     * @param df dataset to traverse
-    * @param fn function to apply at each column; e.g. c => if (c.toString == "contact.person.age") c * 10 else c
+    * @param fn function to apply at each column; e.g. { case "contact.person.age" => col("contact.person.age") * 10 }
     * @return
     */
-  def applyToDataset[T](df: Dataset[T], fn: Column => Column)(
+  def applyToDataset[T](df: Dataset[T], fn: PartialFunction[String, Column])(
       implicit enc: Encoder[T]
   ): Dataset[T] = {
     val projection = traverse(df.schema, fn)
@@ -91,14 +91,16 @@ object Utilities {
     * @param fn function to apply to each non-struct column within schema
     * @return Array of columns for use in projection
     * @example
-    *          val projection = traverse(df.schema, c => if (c.toString == "contact.person.age") c * 10 else c)
+    *          val projection = traverse(df.schema, { case "contact.person.age" => col("contact.person.age") * 10 })
     *          df.select(projection:_*) // This will apply the function to nested columns
     */
-  def traverse(schema: StructType, fn: Column => Column, path: String = ""): Array[Column] = {
+  def traverse(schema: StructType, fn: PartialFunction[String, Column], path: String = ""): Array[Column] = {
     schema.fields.map(f => {
+      val p = path + f.name
+      val c = col(p)
       f.dataType match {
-        case s: StructType => struct(traverse(s, fn, path + f.name + "."): _*)
-        case _             => fn(col(path + f.name))
+        case s: StructType => fn.orElse({ case _ => when(c.isNotNull, struct(traverse(s, fn, p + "."): _*))}: PartialFunction[String, Column])(p)
+        case _ => fn.orElse({ case _ => c }: PartialFunction[String, Column])(p)
       }
     })
   }
