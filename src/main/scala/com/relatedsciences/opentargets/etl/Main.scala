@@ -4,10 +4,11 @@ import java.nio.file.Paths
 import com.relatedsciences.opentargets.etl.configuration.Configuration.Config
 import com.typesafe.scalalogging.LazyLogging
 import org.apache.spark.sql.SparkSession
-import pureconfig.error.ConfigReaderFailures
 import scopt.OptionParser
+// Do not remove any of these -- while flagged as unused in IntelliJ, they are necessary for config parsing
 import pureconfig._
 import pureconfig.generic.auto._
+import pureconfig.module.enumeratum._
 
 object Main extends LazyLogging {
   val progName: String = "ot-platform-pipe"

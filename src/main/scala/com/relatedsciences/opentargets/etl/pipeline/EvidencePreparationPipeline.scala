@@ -373,8 +373,17 @@ class EvidencePreparationPipeline(ss: SparkSession, config: Config)
   }
 
   def validateDiseaseIds(df: DataFrame): DataFrame = {
-    val dfd = getEFOIndexData.select($"id".as("efo_index:id"))
-        .dropDuplicates("efo_index:id")
+    val dfd = getEFOIndexData.select(
+        $"id".as("efo_index:id"),
+        // Generate a full list of of all ancestors, including the current disease, as codes (not uris)
+        struct(
+          array_distinct(concat(
+            flatten($"path_codes"),
+            array($"id")
+          )).as("efo_codes")
+        ).as("private")
+      )
+      .dropDuplicates("efo_index:id")
 
     // Join to gene index data to detect unmapped gene/target ids
     df.join(broadcast(dfd), df("disease.id") === dfd("efo_index:id"), "left")
@@ -389,7 +398,7 @@ class EvidencePreparationPipeline(ss: SparkSession, config: Config)
                                            config.evidenceDiseaseIdValidationErrorsPath))
       .filter($"is_valid")
       .drop("reason", "is_valid", "efo_index:id")
-      .transform(assertSchemasEqual(df))
+      .transform(dfc => {assertSchemasEqual(df)(dfc.drop("private")); dfc})
   }
 
   def validateDataSources(df: DataFrame): DataFrame = {

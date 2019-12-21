@@ -1,12 +1,10 @@
 package com.relatedsciences.opentargets.etl.pipeline
-import java.nio.file.Paths
-
-import com.relatedsciences.opentargets.etl.configuration.Configuration.Config
+import com.relatedsciences.opentargets.etl.configuration.Configuration.{Config, ExecutionMode}
 import com.relatedsciences.opentargets.etl.pipeline.Pipeline.Spec
 import com.relatedsciences.opentargets.etl.schema.Fields
 import com.typesafe.scalalogging.LazyLogging
 import org.apache.spark.sql.{DataFrame, SparkSession}
-import org.apache.spark.sql.functions.{array, struct, when}
+import org.apache.spark.sql.functions.{array, array_distinct, flatten, struct, when}
 
 class ScoringPreparationPipeline(ss: SparkSession, config: Config)
     extends SparkPipeline(ss, config)
@@ -18,15 +16,21 @@ class ScoringPreparationPipeline(ss: SparkSession, config: Config)
     */
   def getRawEvidence: DataFrame = {
     val resourceDataFields = Fields.allColumns.toList
-    ss.read
-      .json(config.evidenceExtractPath)
+    val df = config.executionMode match {
+      // Switch data source for pipeline base on run mode since in test, we don't want the
+      // evidence and scoring pipelines to be connected but in production we do
+      case ExecutionMode.Production => ss.read.parquet(config.preparedRawEvidencePath)
+      case ExecutionMode.Test => ss.read.json(config.evidenceExtractPath)
+    }
+    df
+      // Evidence id's are intentionally left un-deduplicated by evidence prep pipeline
       .dropDuplicates("id")
       .select(
         $"target.id".as("target_id"),
-        $"private.efo_codes".as("efo_codes"),
         $"disease.id".as("disease_id"),
         $"type".as("type_id"),
         $"sourceID".as("source_id"),
+        $"private.efo_codes".as("efo_codes"),
         $"id",
         struct(resourceDataFields: _*).as("resource_data")
       )

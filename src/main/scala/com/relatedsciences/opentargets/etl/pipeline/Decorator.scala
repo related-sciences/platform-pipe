@@ -51,7 +51,7 @@ object Decorator extends LazyLogging {
       def run: S => A = (s: S) => {
         logger.info(s"Constructing operation '${op.scope.last}'")
         val o = op.run(s)
-        logger.info(s"Construction for operation '${op.scope.last}' complete")
+        logger.info(s"Construction of operation '${op.scope.last}' complete")
         o
       }
     }
