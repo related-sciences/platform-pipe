@@ -9,7 +9,8 @@ object Dependencies {
 
   lazy val configDeps = Seq(
     "org.yaml"              % "snakeyaml"   % "1.21",
-    "com.github.pureconfig" %% "pureconfig" % "0.12.1"
+    "com.github.pureconfig" %% "pureconfig" % "0.12.1",
+    "com.github.pureconfig" %% "pureconfig-enumeratum" % "0.8.0"
   )
 
   lazy val codeDeps = Seq(

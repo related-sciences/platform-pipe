@@ -2,6 +2,10 @@ package com.relatedsciences.opentargets.etl.configuration
 import java.net.URL
 import java.nio.file.Paths
 
+import enumeratum.EnumEntry.Hyphencase
+import enumeratum._
+import scala.collection.immutable
+
 object Configuration {
 
   case class PipelineScoring(
@@ -27,6 +31,13 @@ object Configuration {
 
   case class DataResources(localDir: String, evidenceJsonSchema: String, ecoScores: String)
 
+  sealed trait ExecutionMode extends EnumEntry with Hyphencase
+  object ExecutionMode extends Enum[ExecutionMode] {
+    val values: immutable.IndexedSeq[ExecutionMode] = findValues
+    case object Production extends ExecutionMode
+    case object Test extends ExecutionMode
+  }
+
   case class Pipeline(
                        scoring: PipelineScoring,
                        evidence: PipelineEvidence,
@@ -40,6 +51,7 @@ object Configuration {
                      inputDir: String,
                      outputDir: String,
                      logLevel: String,
+                     executionMode: ExecutionMode,
                      dataSources: List[DataSource],
                      dataResources: DataResources,
                      externalConfig: ExternalConfig,

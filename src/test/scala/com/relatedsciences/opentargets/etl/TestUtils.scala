@@ -3,8 +3,10 @@ import java.nio.file.{Path, Paths}
 
 import com.relatedsciences.opentargets.etl.configuration.Configuration
 import pureconfig.ConfigSource
-import pureconfig.generic.auto._
+// Do not remove any of these -- while flagged as unused in IntelliJ, they are necessary for config parsing
 import pureconfig._
+import pureconfig.generic.auto._
+import pureconfig.module.enumeratum._
 
 object TestUtils {
 
