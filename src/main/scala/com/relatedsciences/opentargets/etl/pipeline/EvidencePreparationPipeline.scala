@@ -431,5 +431,11 @@ class EvidencePreparationPipeline(ss: SparkSession, config: Config)
       .andThen("validateDiseaseIds", validateDiseaseIds)
       .andThen("validateDataSources", validateDataSources)
       .stop("savePreparedEvidence", save(_, config.preparedRawEvidencePath))
+
+    // To dodge validation and test parquet input:
+    // .start("getEvidenceRawData", () => ss.read.parquet(
+    //   config.rawEvidencePath).transform(Functions.addEvidenceRecordId("id"))
+    // )
+    // .andThen("normalizeTargetIds", normalizeTargetIds)
   }
 }
