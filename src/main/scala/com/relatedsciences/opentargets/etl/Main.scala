@@ -1,5 +1,7 @@
 package com.relatedsciences.opentargets.etl
 import java.nio.file.Paths
+import java.text.SimpleDateFormat
+import java.util.Date
 
 import com.relatedsciences.opentargets.etl.configuration.Configuration.Config
 import com.typesafe.scalalogging.LazyLogging
@@ -85,11 +87,12 @@ object Main extends LazyLogging {
     }
   }
 
+  def now: String = new SimpleDateFormat("YYYY-MM-dd HH:mm:ss").format(new Date)
   case class Args(config: String = "", command: Option[String] = None)
 
   def run(args: Args, config: Config)(implicit ss: SparkSession): Unit = {
     // Log to stdout (very sparingly) in the event of logging configuration failures
-    println(s"Running $progName with args=$args")
+    println(s"Running $progName with args=$args ($now)")
     logger.info(s"Running $progName with args=$args")
     logger.debug(s"Configuration to be used for processing=$config")
 
@@ -103,7 +106,7 @@ object Main extends LazyLogging {
     }
 
     logger.info(s"Application complete")
-    println("Application complete")
+    println(s"Application complete ($now)")
   }
 
 }
