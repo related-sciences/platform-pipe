@@ -5,10 +5,10 @@ lazy val DATA_DIR                 = Paths.get(sys.env.getOrElse("OT_DATA_DIR", D
 lazy val EXTRACT_DIR              = DATA_DIR.resolve("extract")
 lazy val RESULTS_DIR              = DATA_DIR.resolve("results")
 lazy val DATA_CACHE_DIR           = DATA_DIR.resolve("cache")
-lazy val REPO_DIR                 = Paths.get(HOME, "repos", "ot-scoring")
+lazy val REPO_DIR                 = Paths.get(HOME, "repos", "platform-pipe")
 lazy val TEST_RESOURCE_DIR        = REPO_DIR.resolve(Paths.get("src", "test", "resources"))
 lazy val MAIN_RESOURCE_DIR        = REPO_DIR.resolve(Paths.get("src", "main", "resources"))
 lazy val TEST_PIPELINE_DIR        = TEST_RESOURCE_DIR.resolve("pipeline_test")
-lazy val DEFAULT_PROJECT_JAR_PATH = DATA_DIR.resolve("apps").resolve("ot-scoring.jar").toString
+lazy val DEFAULT_PROJECT_JAR_PATH = DATA_DIR.resolve("apps").resolve("platform-pipe.jar").toString
 lazy val PROJECT_JAR_PATH =
   Paths.get(sys.env.getOrElse("PROJECT_JAR_PATH", DEFAULT_PROJECT_JAR_PATH))

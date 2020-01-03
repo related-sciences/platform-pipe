@@ -2,7 +2,7 @@
 # Extract Elasticsearch indexes loaded by data_pipeline into separate files
 #
 # Usage (in ot-import container):
-# cd ~/repos/ot-scoring/scripts
+# cd ~/repos/platform-pipe/scripts
 # ./data_pipeline_extract.py --index=master_evidence-data --output-dir=~/data/ot/extract --output-filename=evidence.json
 # ./data_pipeline_extract.py --index=master_gene-data --output-dir=~/data/ot/extract --output-filename=gene.json
 # ./data_pipeline_extract.py --index=master_association-data --output-dir=~/data/ot/extract --output-filename=association.json

@@ -1,5 +1,5 @@
-[![Build Status](https://travis-ci.org/related-sciences/ot-scoring.svg?branch=master)](https://travis-ci.org/related-sciences/ot-scoring)
-[![codecov](https://codecov.io/gh/related-sciences/ot-scoring/branch/master/graph/badge.svg)](https://codecov.io/gh/related-sciences/ot-scoring)
+[![Build Status](https://travis-ci.org/related-sciences/platform-pipe.svg?branch=master)](https://travis-ci.org/related-sciences/platform-pipe)
+[![codecov](https://codecov.io/gh/related-sciences/platform-pipe/branch/master/graph/badge.svg)](https://codecov.io/gh/related-sciences/platform-pipe)
 
 # OpenTargets Scoring
 
@@ -37,7 +37,7 @@ scalafmt --version # "scalafmt 2.2.1" at TOW
 The pre-commit hook can then be installed using:
 
 ```bash
-cd $REPOS/ot-scoring
+cd $REPOS/platform-pipe
 chmod +x hooks/pre-commit.scalafmt 
 ln -s $PWD/hooks/pre-commit.scalafmt .git/hooks/pre-commit
 ```
@@ -50,7 +50,7 @@ used to ignore that step if absolutely necessary.
 To build a fat jar for execution (w/o Spark):
 
 ```
-cd ~/repos/rs/ot-scoring
+cd ~/repos/rs/platform-pipe
 sbt "set test in assembly := {}" clean assembly
 ```
 
@@ -58,23 +58,23 @@ To ship and run a script:
 
 ```
 # on dev workstation
-rsync -P $HOME/repos/rs/ot-scoring/target/scala-2.12/ot-scoring.jar rs1:/data/disk1/ot/dev/apps/
-rsync -P $HOME/repos/rs/ot-scoring/scripts/* rs1:/data/disk1/ot/dev/apps/scripts/
+rsync -P $HOME/repos/rs/platform-pipe/target/scala-2.12/platform-pipe.jar rs1:/data/disk1/ot/dev/apps/
+rsync -P $HOME/repos/rs/platform-pipe/scripts/* rs1:/data/disk1/ot/dev/apps/scripts/
 
 # Run script on ot-client container
 /usr/spark-2.4.4/bin/spark-shell --driver-memory 12g \
---jars $HOME/data/ot/apps/ot-scoring.jar \
+--jars $HOME/data/ot/apps/platform-pipe.jar \
 -i $HOME/data/ot/apps/scripts/create_evidence_test_datasets.sc \
 --conf spark.ui.enabled=false --conf spark.sql.shuffle.partitions=1 \
 --conf spark.driver.args="\
 extractDir=$HOME/data/ot/extract,\
-testInputDir=$HOME/repos/ot-scoring/src/test/resources/pipeline_test/input,\
-testExpectedDir=$HOME/repos/ot-scoring/src/test/resources/pipeline_test/expected"
+testInputDir=$HOME/repos/platform-pipe/src/test/resources/pipeline_test/input,\
+testExpectedDir=$HOME/repos/platform-pipe/src/test/resources/pipeline_test/expected"
 
 # Run app on ot-client container (in local mode)
 /usr/spark-2.4.4/bin/spark-shell --driver-memory 12g \
 --conf spark.ui.enabled=false --conf spark.sql.shuffle.partitions=1 \
-$HOME/data/ot/apps/ot-scoring.jar [ARGS]
+$HOME/data/ot/apps/platform-pipe.jar [ARGS]
 ```
 
 
@@ -84,5 +84,5 @@ To build a local jar for execution via remote Spark installation:
 # On localhost
 sbt package 
 # Ship jar and run on docker container:
-spark-shell ... --jars /target/scala-2.12/ot-scoring_2.12-0.1.jar -i ... 
+spark-shell ... --jars /target/scala-2.12/platform-pipe_2.12-0.1.jar -i ... 
 ```

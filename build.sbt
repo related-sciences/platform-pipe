@@ -6,7 +6,7 @@ lazy val root = (project in file("."))
       List(
         organization := "com.relatedsciences",
         version := "latest",
-        name := "ot-scoring",
+        name := "platform-pipe",
         // Scala version used to build spark in package spark-2.4.4-bin-without-hadoop-scala-2.12
         scalaVersion := "2.12.8"
       )
@@ -20,7 +20,7 @@ lazy val root = (project in file("."))
     libraryDependencies ++= configDeps,
     libraryDependencies ++= testingDeps,
 
-    assemblyJarName in assembly := { "ot-scoring.jar" },
+    assemblyJarName in assembly := { "platform-pipe.jar" },
     assemblyMergeStrategy in assembly := {
       case PathList("org", "aopalliance", xs @ _*)      => MergeStrategy.last
       case PathList("javax", "inject", xs @ _*)         => MergeStrategy.last

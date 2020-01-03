@@ -2,7 +2,7 @@
 # To execute, on non-container host:
 # cd ~/repos/ot/data_pipeline
 # docker-compose build # This will move custom mrdata configs into container
-# bash ~/repos/rs/ot-scoring/scripts/data_pipeline_exec.sh
+# bash ~/repos/rs/platform-pipe/scripts/data_pipeline_exec.sh
 
 # Original data configuration:
 # DCFG=https://storage.googleapis.com/open-targets-data-releases/19.09/input/mrtarget.data.19.09.yml
