@@ -9,10 +9,10 @@
 DCFG=mrtarget.data.19.11.yml  # Replace w/ local conf to ignore EuropePMC
 CMD="docker-compose run mrtarget --data-config=$DCFG"
 # Each of these should only take 1-10 minutes
-#$CMD --rea
-#$CMD --hpa
-#$CMD --eco
-#$CMD --efo
-#$CMD --gen
-#$CMD --val
+$CMD --rea
+$CMD --hpa
+$CMD --eco
+$CMD --efo
+$CMD --gen
+$CMD --val
 $CMD --as

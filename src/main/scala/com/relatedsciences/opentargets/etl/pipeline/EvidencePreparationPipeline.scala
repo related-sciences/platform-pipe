@@ -105,10 +105,11 @@ class EvidencePreparationPipeline(ss: SparkSession, config: Config)
     * Approx. 129k rows
     */
   def getUniProtGeneLookup: Dataset[UniProtGeneLookup] = {
-    getGeneIndexData
+    // Note: uniprot_id and uniprot_accessions are all accessions (not entry names)
+    val df = getGeneIndexData
       .select(
         $"ensembl_gene_id",
-        explode_outer(
+        explode(
           concat(array($"uniprot_id"), $"uniprot_accessions")
         ).as("uniprot_id")
       )
@@ -118,6 +119,21 @@ class EvidencePreparationPipeline(ss: SparkSession, config: Config)
         when(trim($"uniprot_id") =!= "", $"uniprot_id")
         // otherwise null
       )
+      .filter($"uniprot_id".isNotNull && $"ensembl_gene_id".isNotNull)
+      .dropDuplicates()
+
+    // P84243 is an example accession with multiple gene associations: ENSG00000132475 and ENSG00000163041
+    df
+      // Determine which uniprot accessions are associated with multiple genes
+      .groupBy("uniprot_id")
+      .agg(countDistinct($"ensembl_gene_id").as("n_genes"))
+      .filter($"n_genes" > 1)
+      // Return result without accessions having multiple gene mappings
+      .transform(d => {
+        df.filter(!$"uniprot_id".isin(
+          d.collect().map(_.getAs[String]("uniprot_id")):_*
+        ))
+      })
       .as[UniProtGeneLookup]
   }
 
