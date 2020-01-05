@@ -8,7 +8,7 @@ This project is intended to validate, normalize and score [evidence](https://doc
 There are two primary steps in this pipeline:
 
 1. **Evidence Preparation** 
-  - See [EvidencePreparationPipeline.scala](src/main/scala/com/relatedsciences/opentargets/etl/pipeline/EvidencePreparationPipeline.scala) for implementation details.
+  - See [EvidencePreparationPipeline.scala](src/main/scala/com/relatedsciences/opentargets/etl/pipeline/EvidencePreparationPipeline.scala) for implementation details.  
   - This phase of the pipeline will validate and normalize the json evidence strings associated with OT data sources.  These files are generated in large part by [platform-input-support](https://github.com/opentargets/platform-input-support) and are primarily stored in Google Storage (GS).  Links to files for each source are maintained in a [pipeline-configuration](https://docs.targetvalidation.org/technical-pipeline/technical-notes#pipeline-configuration-file) file that is updated with each new release.
   - At a high level, this step requires Elasticsearch index dumps (for gene/disease metadata) as well as GS files and produces a single parquet dataset ([schema](docs/evidence_schema.txt)).
   - Notable operations performed in this phase include:
@@ -29,6 +29,10 @@ Both evidence preparation and scoring can be validated against output from the o
 There are also tests [like this one](https://github.com/related-sciences/platform-pipe/blob/master/src/test/scala/com/relatedsciences/opentargets/etl/PipelineSuite.scala) intended to preserve a subset of these checks as part of the CI build.
 
 ## Configuration
+
+The configuration for the pipeline is determined entirely by [application.conf](src/main/resources/application.conf) (modify as necessary for your use case).  
+
+A key configuration property to keep in mind is ```pipeline.decorators.dataset-summary.enabled```.  When this is true, provenance around evidence record mutation and filtering is preserved at expense of making the evidence prep pipeline take over 2x longer (~47min vs 22min).  This is disabled by default. 
 
 ## Prerequisities
 
@@ -57,7 +61,17 @@ This project will expect two primary sources of input information and while the 
     - See [download_evidence_files.sh] for a script that will download this information
     - These files will collectively occupy about 23G of space (17G of which is from a single source, europepmc, so developers may find it convenient to remove or subset this file for testing)
 
-## Build and Execution
+## Performance
+
+Some expected times for pipeline runs are shown below for various configurations (in local mode on Ubuntu 18.04 8xCPU 128G RAM):
+  - Evidence Preparation
+    - ~12 minutes with raw evidence pre-serialized as parquet (no mutation/filtering provenance)
+    - ~22 minutes with evidence files read as uncompressed json (no mutation/filtering provenance)
+    - ~47 minutes with mutation/filtering provenance and json evidence file sources
+  - Score Calculation
+    - Both score preparation and calculation take around 2 minutes each
+    
+## Execution
 
 To build the project, run:
 
