@@ -60,7 +60,7 @@ This project will expect two primary sources of input information and while the 
         done
         ```
 2. Evidence files 
-    - See [download_evidence_files.sh] for a script that will download this information
+    - See [download_evidence_files.sh](scripts/download_evidence_files.sh) for a script that will download this information
     - These files will collectively occupy about 23G of space (17G of which is from a single source, europepmc, so developers may find it convenient to remove or subset this file for testing)
 
 
