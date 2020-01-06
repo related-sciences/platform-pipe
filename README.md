@@ -32,7 +32,9 @@ There are also tests [like this one](https://github.com/related-sciences/platfor
 
 The configuration for the pipeline is determined entirely by [application.conf](src/main/resources/application.conf) (modify as necessary for your use case).  
 
-A key configuration property to keep in mind is ```pipeline.decorators.dataset-summary.enabled```.  When this is true, provenance around evidence record mutation and filtering is preserved at expense of making the evidence prep pipeline take over 2x longer (~47min vs 22min).  This is disabled by default. 
+A key configuration property to keep in mind is ```pipeline.decorators.dataset-summary.enabled```.  When this is true, provenance around evidence record mutation and filtering is preserved at expense of making the evidence prep pipeline take over 2x longer (~47min vs 22min).  This is disabled by default.
+
+The ```input-dir```, ```output-dir```, and ```data-resources.local-dir``` properties also need to be changed if you are *NOT* using the provided ```ot-client``` docker container.
 
 ## Prerequisities
 
@@ -47,7 +49,7 @@ This project will expect two primary sources of input information and while the 
       - See [data_pipeline#overview](https://github.com/opentargets/data_pipeline#overview) for general instructions
       - See [scripts/data_pipeline_exec.sh](scripts/data_pipeline_exec.sh) for a script that will run the necessary steps above (only everything up to the "association" step is needed)
       - See [scripts/data_pipeline_extract.py](scripts/data_pipeline_extract.py) for instructions on how to create the json dumps from ES
-    2. By downloading and decompressing the pre-prepared dumps at ```https://storage.googleapis.com/platform-pipe/extract/{gene,eco,efo}.json.gz```
+    2. By downloading and decompressing the files at ```https://storage.googleapis.com/platform-pipe/extract/{gene,eco,efo}.json.gz```
       - An example script to do this is:
         ```bash
         mkdir -p $DATA_DIR/extract; cd $DATA_DIR/extract 
@@ -60,6 +62,22 @@ This project will expect two primary sources of input information and while the 
 2. Evidence files 
     - See [download_evidence_files.sh] for a script that will download this information
     - These files will collectively occupy about 23G of space (17G of which is from a single source, europepmc, so developers may find it convenient to remove or subset this file for testing)
+
+
+The expected directory structure is shown below (once the pipeline has been run):
+
+```bash
+# Inputs
+$DATA_DIR/extract/
+$DATA_DIR/extract/gene.json
+$DATA_DIR/extract/eco.json
+$DATA_DIR/extract/efo.json
+$DATA_DIR/extract/evidence_raw.json/{atlas-*.json, gwas-*.json, etc.}
+# Outputs
+$DATA_DIR/results/score_source.parquet
+$DATA_DIR/results/score_association.parquet
+$DATA_DIR/results/evidence_raw.parquet
+``` 
 
 ## Performance
 
