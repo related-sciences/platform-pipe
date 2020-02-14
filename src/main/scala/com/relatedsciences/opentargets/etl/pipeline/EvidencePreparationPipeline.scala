@@ -105,8 +105,12 @@ class EvidencePreparationPipeline(ss: SparkSession, config: Config)
     * Approx. 129k rows
     */
   def getUniProtGeneLookup: Dataset[UniProtGeneLookup] = {
-    // Note: uniprot_id and uniprot_accessions are all accessions (not entry names)
-    val df = getGeneIndexData
+    // Notes:
+    // - uniprot_id and uniprot_accessions are all accessions (not entry names)
+    // - it is ok if there are multiple gene ids for a single UniProt accession (see
+    //   https://github.com/opentargets/platform/issues/801#issuecomment-571196254
+    //   for details
+    getGeneIndexData
       .select(
         $"ensembl_gene_id",
         explode(
@@ -121,19 +125,6 @@ class EvidencePreparationPipeline(ss: SparkSession, config: Config)
       )
       .filter($"uniprot_id".isNotNull && $"ensembl_gene_id".isNotNull)
       .dropDuplicates()
-
-    // P84243 is an example accession with multiple gene associations: ENSG00000132475 and ENSG00000163041
-    df
-      // Determine which uniprot accessions are associated with multiple genes
-      .groupBy("uniprot_id")
-      .agg(countDistinct($"ensembl_gene_id").as("n_genes"))
-      .filter($"n_genes" > 1)
-      // Return result without accessions having multiple gene mappings
-      .transform(d => {
-        df.filter(!$"uniprot_id".isin(
-          d.collect().map(_.getAs[String]("uniprot_id")):_*
-        ))
-      })
       .as[UniProtGeneLookup]
   }
 
@@ -218,7 +209,7 @@ class EvidencePreparationPipeline(ss: SparkSession, config: Config)
 
     // Resolve "non-reference" target identifiers
     val dff = dfru
-    // Join to reference/alternate genes on the alternate id
+      // Join to reference/alternate genes on the alternate id
       .join(broadcast(dfn), dfru("target.id") === dfn("nonref:alternate"), "left")
       .withColumn(
         "target_id_nonrefalt",
