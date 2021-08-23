@@ -46,7 +46,7 @@ opentargets-urlzsource==1.0.0
 opentargets-validator==0.4.0
 
 # Deps for visualization and exploration
-jupyterlab==1.1.4
+jupyterlab==1.2.21
 matplotlib==3.1.1
 pandas==0.25.1
 plotnine==0.6.0
