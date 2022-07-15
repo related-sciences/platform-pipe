@@ -5,7 +5,7 @@ biopython==1.73
 cachetools==3.1.1
 certifi==2019.3.9
 chardet==3.0.4
-codecov==2.0.15
+codecov==2.0.16
 ConfigArgParse==0.14.0
 coverage==4.5.3
 decorator==4.4.0
